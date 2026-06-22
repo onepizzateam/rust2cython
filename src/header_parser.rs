@@ -1,9 +1,14 @@
 use anyhow::Context;
 
 pub fn parse_c_header(path: &std::path::Path) -> anyhow::Result<crate::ir::Module> {
-    let src = std::fs::read_to_string(path).with_context(|| format!("reading file {}", path.display()))?;
+    let src = std::fs::read_to_string(path)
+        .with_context(|| format!("reading file {}", path.display()))?;
 
-    let mut module = crate::ir::Module { functions: Vec::new(), structs: Vec::new(), enums: Vec::new() };
+    let mut module = crate::ir::Module {
+        functions: Vec::new(),
+        structs: Vec::new(),
+        enums: Vec::new(),
+    };
 
     // Helper: convert C type string to TypeRef
     fn map_type(s: &str) -> crate::ir::TypeRef {
@@ -13,7 +18,7 @@ pub fn parse_c_header(path: &std::path::Path) -> anyhow::Result<crate::ir::Modul
         let stripped = stripped.trim();
         let compact = stripped.replace("  ", " ");
 
-        use crate::ir::{TypeRef, PrimKind};
+        use crate::ir::{PrimKind, TypeRef};
 
         if compact == "int" || compact == "int32_t" {
             return TypeRef::Primitive(PrimKind::I32);
@@ -39,7 +44,11 @@ pub fn parse_c_header(path: &std::path::Path) -> anyhow::Result<crate::ir::Modul
         if compact == "void*" || compact == "void *" {
             return TypeRef::Ptr(Box::new(TypeRef::Void));
         }
-        if compact == "const char*" || compact == "const char *" || compact == "char *" || compact == "char*" {
+        if compact == "const char*"
+            || compact == "const char *"
+            || compact == "char *"
+            || compact == "char*"
+        {
             return TypeRef::Str;
         }
 
@@ -84,20 +93,36 @@ pub fn parse_c_header(path: &std::path::Path) -> anyhow::Result<crate::ir::Modul
                     let semicol = brace_close + semicol;
                     // extract name between brace_close and semicol
                     let name = src[brace_close + 1..semicol].trim();
-                    let struct_name = name.split_whitespace().last().unwrap_or("").trim().to_string();
+                    let struct_name = name
+                        .split_whitespace()
+                        .last()
+                        .unwrap_or("")
+                        .trim()
+                        .to_string();
                     let fields_text = &src[brace_open + 1..brace_close];
                     let mut fields = Vec::new();
                     for part in fields_text.split(';') {
                         let part = part.trim();
-                        if part.is_empty() { continue }
+                        if part.is_empty() {
+                            continue;
+                        }
                         // each field like: "int a" or "const char *name"
                         let typ = strip_name(part);
                         let ty = map_type(typ);
                         // field name: take last token
-                        let fname = part.split_whitespace().last().unwrap_or("_").trim().to_string();
+                        let fname = part
+                            .split_whitespace()
+                            .last()
+                            .unwrap_or("_")
+                            .trim()
+                            .to_string();
                         fields.push(crate::ir::FieldDef { name: fname, ty });
                     }
-                    module.structs.push(crate::ir::StructDef { name: struct_name, fields, doc: None });
+                    module.structs.push(crate::ir::StructDef {
+                        name: struct_name,
+                        fields,
+                        doc: None,
+                    });
                     pos = semicol + 1;
                     continue;
                 }
@@ -110,23 +135,39 @@ pub fn parse_c_header(path: &std::path::Path) -> anyhow::Result<crate::ir::Modul
     // Parse function declarations line by line
     for line in src.lines() {
         let line = line.trim();
-        if line.is_empty() { continue }
-        if line.starts_with("//") || line.starts_with('#') { continue }
+        if line.is_empty() {
+            continue;
+        }
+        if line.starts_with("//") || line.starts_with('#') {
+            continue;
+        }
         // only simple one-line prototypes: must end with ';' and contain '(' and ')'
-        if !line.ends_with(';') { continue }
-        if !line.contains('(') || !line.contains(')') { continue }
+        if !line.ends_with(';') {
+            continue;
+        }
+        if !line.contains('(') || !line.contains(')') {
+            continue;
+        }
         // avoid typedefs
-        if line.starts_with("typedef") { continue }
+        if line.starts_with("typedef") {
+            continue;
+        }
         // extract before '('
         if let Some(p_idx) = line.find('(') {
             let before = &line[..p_idx];
             // separate return type and name
             let before = before.trim();
             let mut parts: Vec<&str> = before.split_whitespace().collect();
-            if parts.len() < 1 { continue }
+            if parts.is_empty() {
+                continue;
+            }
             let name = parts.pop().unwrap().to_string();
             let ret_type_str = parts.join(" ");
-            let ret_ty = if ret_type_str.is_empty() { crate::ir::TypeRef::Void } else { map_type(&ret_type_str) };
+            let ret_ty = if ret_type_str.is_empty() {
+                crate::ir::TypeRef::Void
+            } else {
+                map_type(&ret_type_str)
+            };
 
             // params between () up to closing ')'
             if let Some(close_idx) = line.find(')') {
@@ -136,19 +177,36 @@ pub fn parse_c_header(path: &std::path::Path) -> anyhow::Result<crate::ir::Modul
                 if !params_str.is_empty() && params_str != "void" {
                     for p in params_str.split(',') {
                         let p = p.trim();
-                        if p.is_empty() { continue }
+                        if p.is_empty() {
+                            continue;
+                        }
                         let typ_part = strip_name(p);
                         let mut typ_s = typ_part.trim().to_string();
                         // if star present in original token but lost, keep it
-                        if !typ_s.contains('*') && p.contains('*') { typ_s.push('*'); }
+                        if !typ_s.contains('*') && p.contains('*') {
+                            typ_s.push('*');
+                        }
                         let pty = map_type(&typ_s);
                         // param name attempt
-                        let pname = p.split_whitespace().last().unwrap_or("_").trim().to_string();
-                        params.push(crate::ir::Param { name: pname, ty: pty });
+                        let pname = p
+                            .split_whitespace()
+                            .last()
+                            .unwrap_or("_")
+                            .trim()
+                            .to_string();
+                        params.push(crate::ir::Param {
+                            name: pname,
+                            ty: pty,
+                        });
                     }
                 }
 
-                module.functions.push(crate::ir::FnDef { name, params, ret: ret_ty, doc: None });
+                module.functions.push(crate::ir::FnDef {
+                    name,
+                    params,
+                    ret: ret_ty,
+                    doc: None,
+                });
             }
         }
     }

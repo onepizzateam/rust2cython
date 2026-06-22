@@ -1,15 +1,22 @@
 use crate::ir::TypeRef;
 
-fn has_unknown_named(ty: &TypeRef, struct_names: &std::collections::HashSet<String>) -> Option<String> {
+fn has_unknown_named(
+    ty: &TypeRef,
+    struct_names: &std::collections::HashSet<String>,
+) -> Option<String> {
     match ty {
         TypeRef::Named(s) => {
-            if struct_names.contains(s) { None } else { Some(s.clone()) }
+            if struct_names.contains(s) {
+                None
+            } else {
+                Some(s.clone())
+            }
         }
         TypeRef::Vec(inner) | TypeRef::Option(inner) | TypeRef::Ptr(inner) => {
-            has_unknown_named(&*inner, struct_names)
+            has_unknown_named(inner, struct_names)
         }
         TypeRef::Result(ok, err) => {
-            has_unknown_named(&*ok, struct_names).or_else(|| has_unknown_named(&*err, struct_names))
+            has_unknown_named(ok, struct_names).or_else(|| has_unknown_named(err, struct_names))
         }
         _ => None,
     }
@@ -23,7 +30,8 @@ pub fn generate_pxd(module: &crate::ir::Module, lib_name: &str) -> String {
     out.push_str(&format!("cdef extern from \"{}.h\":\n\n", lib_name));
 
     // prepare set of struct names for type resolution
-    let struct_names: std::collections::HashSet<String> = module.structs.iter().map(|s| s.name.clone()).collect();
+    let struct_names: std::collections::HashSet<String> =
+        module.structs.iter().map(|s| s.name.clone()).collect();
 
     // Structs first (inside extern block)
     for s in &module.structs {
@@ -36,18 +44,29 @@ pub fn generate_pxd(module: &crate::ir::Module, lib_name: &str) -> String {
                 out.push_str(&format!("        {} {}\n", cty, f.name));
             }
         }
-        out.push_str("\n");
+        out.push('\n');
     }
 
     // Functions
     for fn_def in &module.functions {
         // check return and params for unknown Named types
         if let Some(name) = has_unknown_named(&fn_def.ret, &struct_names) {
-            out.push_str(&format!("    # WARNING: skipped {}, unknown type {}\n\n", fn_def.name, name));
+            out.push_str(&format!(
+                "    # WARNING: skipped {}, unknown type {}\n\n",
+                fn_def.name, name
+            ));
             continue;
         }
-        if let Some(name) = fn_def.params.iter().filter_map(|p| has_unknown_named(&p.ty, &struct_names)).next() {
-            out.push_str(&format!("    # WARNING: skipped {}, unknown type {}\n\n", fn_def.name, name));
+        if let Some(name) = fn_def
+            .params
+            .iter()
+            .filter_map(|p| has_unknown_named(&p.ty, &struct_names))
+            .next()
+        {
+            out.push_str(&format!(
+                "    # WARNING: skipped {}, unknown type {}\n\n",
+                fn_def.name, name
+            ));
             continue;
         }
 
@@ -56,11 +75,11 @@ pub fn generate_pxd(module: &crate::ir::Module, lib_name: &str) -> String {
         let mut extra_params = Vec::new();
         let ret = match &fn_def.ret {
             TypeRef::Str => "const char*".to_string(),
-            TypeRef::Option(inner) => format!("const {}*", to_cython_type(&*inner)),
+            TypeRef::Option(inner) => format!("const {}*", to_cython_type(inner)),
             TypeRef::Result(ok, _err) => {
                 // Result returns the Ok value; add char** error_out as last param
                 extra_params.push("char** error_out".to_string());
-                to_cython_type(&*ok)
+                to_cython_type(ok)
             }
             other => to_cython_type(other),
         };
@@ -69,24 +88,31 @@ pub fn generate_pxd(module: &crate::ir::Module, lib_name: &str) -> String {
         for p in &fn_def.params {
             let ptype = match &p.ty {
                 TypeRef::Str => "const char*".to_string(),
-                TypeRef::Option(inner) => format!("const {}*", to_cython_type(&*inner)),
+                TypeRef::Option(inner) => format!("const {}*", to_cython_type(inner)),
                 other => to_cython_type(other),
             };
             params.push(format!("{} {}", ptype, p.name));
         }
 
         // append any extra params (e.g., error_out)
-        for ep in extra_params { params.push(ep); }
+        for ep in extra_params {
+            params.push(ep);
+        }
 
         let params = params.join(", ");
 
         // If function uses Option in param/return, add note
-        let uses_option = matches!(&fn_def.ret, TypeRef::Option(_)) || fn_def.params.iter().any(|p| matches!(&p.ty, TypeRef::Option(_)));
+        let uses_option = matches!(&fn_def.ret, TypeRef::Option(_))
+            || fn_def
+                .params
+                .iter()
+                .any(|p| matches!(&p.ty, TypeRef::Option(_)));
         if uses_option {
-            out.push_str(&format!("    # Note: Rust param/return must use *const <type> (not Option<T> directly)\n"));
+            out.push_str("    # Note: Rust param/return must use *const <type> (not Option<T> directly)\n");
         }
 
-        out.push_str(&format!("    {} {}({})\n\n", ret, fn_def.name, params));
+        out.push_str(&format!("    {} {}({})\n", ret, fn_def.name, params));
+        out.push('\n');
     }
 
     // Enums: outside extern block
@@ -95,7 +121,7 @@ pub fn generate_pxd(module: &crate::ir::Module, lib_name: &str) -> String {
         for v in &e.variants {
             out.push_str(&format!("    {}\n", v.name));
         }
-        out.push_str("\n");
+        out.push('\n');
     }
 
     out

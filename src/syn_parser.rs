@@ -1,7 +1,8 @@
 use anyhow::Context;
 
 pub fn parse_rust_file(path: &std::path::Path) -> anyhow::Result<crate::ir::Module> {
-    let src = std::fs::read_to_string(path).with_context(|| format!("reading file {}", path.display()))?;
+    let src = std::fs::read_to_string(path)
+        .with_context(|| format!("reading file {}", path.display()))?;
     let file = syn::parse_file(&src).with_context(|| format!("parsing file {}", path.display()))?;
 
     fn extract_doc(attrs: &[syn::Attribute]) -> Option<String> {
@@ -13,11 +14,15 @@ pub fn parse_rust_file(path: &std::path::Path) -> anyhow::Result<crate::ir::Modu
                 }
             }
         }
-        if docs.is_empty() { None } else { Some(docs.join("\n")) }
+        if docs.is_empty() {
+            None
+        } else {
+            Some(docs.join("\n"))
+        }
     }
 
     fn convert(ty: &syn::Type) -> crate::ir::TypeRef {
-        use crate::ir::{TypeRef, PrimKind};
+        use crate::ir::{PrimKind, TypeRef};
         match ty {
             syn::Type::Path(tp) if tp.qself.is_none() => {
                 if let Some(seg) = tp.path.segments.last() {
@@ -55,10 +60,17 @@ pub fn parse_rust_file(path: &std::path::Path) -> anyhow::Result<crate::ir::Modu
                         "Result" => {
                             if let syn::PathArguments::AngleBracketed(args) = &seg.arguments {
                                 let mut iter = args.args.iter().filter_map(|ga| {
-                                    if let syn::GenericArgument::Type(t) = ga { Some(t) } else { None }
+                                    if let syn::GenericArgument::Type(t) = ga {
+                                        Some(t)
+                                    } else {
+                                        None
+                                    }
                                 });
                                 if let (Some(t1), Some(t2)) = (iter.next(), iter.next()) {
-                                    return TypeRef::Result(Box::new(convert(t1)), Box::new(convert(t2)));
+                                    return TypeRef::Result(
+                                        Box::new(convert(t1)),
+                                        Box::new(convert(t2)),
+                                    );
                                 }
                             }
                             TypeRef::Named(ident)
@@ -72,18 +84,24 @@ pub fn parse_rust_file(path: &std::path::Path) -> anyhow::Result<crate::ir::Modu
             syn::Type::Reference(r) => {
                 if let syn::Type::Path(tp) = &*r.elem {
                     if let Some(seg) = tp.path.segments.last() {
-                        if seg.ident == "str" { return TypeRef::Str; }
+                        if seg.ident == "str" {
+                            return TypeRef::Str;
+                        }
                     }
                 }
-                convert(&*r.elem)
+                convert(&r.elem)
             }
-            syn::Type::Ptr(p) => TypeRef::Ptr(Box::new(convert(&*p.elem))),
+            syn::Type::Ptr(p) => TypeRef::Ptr(Box::new(convert(&p.elem))),
             syn::Type::Tuple(t) if t.elems.is_empty() => TypeRef::Void,
             _ => TypeRef::Named("unknown".to_string()),
         }
     }
 
-    let mut module = crate::ir::Module { functions: Vec::new(), structs: Vec::new(), enums: Vec::new() };
+    let mut module = crate::ir::Module {
+        functions: Vec::new(),
+        structs: Vec::new(),
+        enums: Vec::new(),
+    };
 
     for item in file.items {
         match item {
@@ -98,15 +116,23 @@ pub fn parse_rust_file(path: &std::path::Path) -> anyhow::Result<crate::ir::Modu
                                 syn::Pat::Ident(pi) => pi.ident.to_string(),
                                 _ => "_".to_string(),
                             };
-                            let pty = convert(&*pt.ty);
-                            params.push(crate::ir::Param { name: pname, ty: pty });
+                            let pty = convert(&pt.ty);
+                            params.push(crate::ir::Param {
+                                name: pname,
+                                ty: pty,
+                            });
                         }
                     }
                     let ret = match &f.sig.output {
                         syn::ReturnType::Default => crate::ir::TypeRef::Void,
-                        syn::ReturnType::Type(_, ty) => convert(&*ty),
+                        syn::ReturnType::Type(_, ty) => convert(ty),
                     };
-                    module.functions.push(crate::ir::FnDef { name, params, ret, doc });
+                    module.functions.push(crate::ir::FnDef {
+                        name,
+                        params,
+                        ret,
+                        doc,
+                    });
                 }
             }
             syn::Item::Struct(s) => {
@@ -115,19 +141,38 @@ pub fn parse_rust_file(path: &std::path::Path) -> anyhow::Result<crate::ir::Modu
                     let doc = extract_doc(&s.attrs);
                     let mut fields = Vec::new();
                     for field in s.fields.iter() {
-                        let fname = field.ident.as_ref().map(|id| id.to_string()).unwrap_or_else(|| "_".to_string());
+                        let fname = field
+                            .ident
+                            .as_ref()
+                            .map(|id| id.to_string())
+                            .unwrap_or_else(|| "_".to_string());
                         let fty = convert(&field.ty);
-                        fields.push(crate::ir::FieldDef { name: fname, ty: fty });
+                        fields.push(crate::ir::FieldDef {
+                            name: fname,
+                            ty: fty,
+                        });
                     }
-                    module.structs.push(crate::ir::StructDef { name, fields, doc });
+                    module
+                        .structs
+                        .push(crate::ir::StructDef { name, fields, doc });
                 }
             }
             syn::Item::Enum(e) => {
                 if matches!(e.vis, syn::Visibility::Public(_)) {
                     let name = e.ident.to_string();
                     let doc = extract_doc(&e.attrs);
-                    let variants = e.variants.into_iter().map(|v| crate::ir::EnumVariant { name: v.ident.to_string() }).collect();
-                    module.enums.push(crate::ir::EnumDef { name, variants, doc });
+                    let variants = e
+                        .variants
+                        .into_iter()
+                        .map(|v| crate::ir::EnumVariant {
+                            name: v.ident.to_string(),
+                        })
+                        .collect();
+                    module.enums.push(crate::ir::EnumDef {
+                        name,
+                        variants,
+                        doc,
+                    });
                 }
             }
             _ => {}

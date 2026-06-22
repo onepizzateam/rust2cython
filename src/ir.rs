@@ -1,5 +1,18 @@
 #[derive(Debug, Clone)]
-pub enum PrimKind { I8, I16, I32, I64, U8, U16, U32, U64, F32, F64, Bool, Usize }
+pub enum PrimKind {
+    I8,
+    I16,
+    I32,
+    I64,
+    U8,
+    U16,
+    U32,
+    U64,
+    F32,
+    F64,
+    Bool,
+    Usize,
+}
 
 #[derive(Debug, Clone)]
 pub enum TypeRef {
@@ -14,7 +27,10 @@ pub enum TypeRef {
 }
 
 #[derive(Debug, Clone)]
-pub struct Param { pub name: String, pub ty: TypeRef }
+pub struct Param {
+    pub name: String,
+    pub ty: TypeRef,
+}
 
 #[derive(Debug, Clone)]
 pub struct FnDef {
@@ -25,8 +41,12 @@ pub struct FnDef {
 }
 
 #[derive(Debug, Clone)]
-pub struct FieldDef { pub name: String, pub ty: TypeRef }
+pub struct FieldDef {
+    pub name: String,
+    pub ty: TypeRef,
+}
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct StructDef {
     pub name: String,
@@ -35,8 +55,11 @@ pub struct StructDef {
 }
 
 #[derive(Debug, Clone)]
-pub struct EnumVariant { pub name: String }
+pub struct EnumVariant {
+    pub name: String,
+}
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct EnumDef {
     pub name: String,

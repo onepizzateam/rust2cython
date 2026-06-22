@@ -1,0 +1,37 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: fmt
+        run: cargo fmt --check
+      - name: clippy
+        run: cargo clippy -- -D warnings
+      - name: build
+        run: cargo build --release
+      - name: Generate test snapshots
+        run: |
+          cargo run -- tests/fixtures/simple.rs  -o tests/snapshots -n simple
+          cargo run -- tests/fixtures/strings.rs -o tests/snapshots -n strings
+          cargo run -- tests/fixtures/structs.rs -o tests/snapshots -n structs
+          cargo run -- tests/fixtures/complex.rs -o tests/snapshots -n complex
+      - name: test
+        run: cargo test

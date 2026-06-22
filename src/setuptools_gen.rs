@@ -1,6 +1,6 @@
 pub fn generate_setup_files(lib_name: &str, rust_source: &str) -> (String, String) {
     let setup = format!(
-r###"from setuptools import setup
+        r###"from setuptools import setup
 from Cython.Build import cythonize
 from setuptools.extension import Extension
 import numpy as np
@@ -25,7 +25,7 @@ setup(
     );
 
     let pyproject = format!(
-r###"[build-system]
+        r###"[build-system]
 requires = ["setuptools", "cython", "numpy"]
 build-backend = "setuptools.backends.legacy:build"
 
@@ -49,7 +49,7 @@ generated_by = "rust2cython"
 
 pub fn generate_build_instructions(lib_name: &str) -> String {
     format!(
-r###"#!/bin/sh
+        r###"#!/bin/sh
 # Build the Rust library first
 cargo build --release
 
