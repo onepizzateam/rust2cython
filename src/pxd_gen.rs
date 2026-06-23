@@ -36,7 +36,10 @@ pub fn generate_pxd(module: &crate::ir::Module, lib_name: &str) -> String {
 
     // Structs first (inside extern block)
     for s in &module.structs {
-        out.push_str(&format!("    ctypedef struct C{} \"{}\":\n", s.name, s.name));
+        out.push_str(&format!(
+            "    ctypedef struct C{} \"{}\":\n",
+            s.name, s.name
+        ));
         if s.fields.is_empty() {
             out.push_str("        pass\n");
         } else {
@@ -52,7 +55,10 @@ pub fn generate_pxd(module: &crate::ir::Module, lib_name: &str) -> String {
     for fn_def in &module.functions {
         // check for unknown named types used
         if let Some(name) = has_unknown_named(&fn_def.ret, &struct_names) {
-            out.push_str(&format!("    # WARNING: skipped {}, unknown type {}\n\n", fn_def.name, name));
+            out.push_str(&format!(
+                "    # WARNING: skipped {}, unknown type {}\n\n",
+                fn_def.name, name
+            ));
             continue;
         }
         if let Some(name) = fn_def
@@ -61,7 +67,10 @@ pub fn generate_pxd(module: &crate::ir::Module, lib_name: &str) -> String {
             .filter_map(|p| has_unknown_named(&p.ty, &struct_names))
             .next()
         {
-            out.push_str(&format!("    # WARNING: skipped {}, unknown type {}\n\n", fn_def.name, name));
+            out.push_str(&format!(
+                "    # WARNING: skipped {}, unknown type {}\n\n",
+                fn_def.name, name
+            ));
             continue;
         }
 
@@ -87,10 +96,15 @@ pub fn generate_pxd(module: &crate::ir::Module, lib_name: &str) -> String {
         for p in &fn_def.params {
             match &p.ty {
                 TypeRef::Str => params.push(format!("const char* {}", p.name)),
-                TypeRef::Option(inner) => params.push(format!("const {}* {}", to_cython_type(inner), p.name)),
+                TypeRef::Option(inner) => {
+                    params.push(format!("const {}* {}", to_cython_type(inner), p.name))
+                }
                 TypeRef::Vec(inner) => {
                     let inner_ct = to_cython_type(inner);
-                    params.push(format!("const {}* {}, size_t {}_len", inner_ct, p.name, p.name));
+                    params.push(format!(
+                        "const {}* {}, size_t {}_len",
+                        inner_ct, p.name, p.name
+                    ));
                 }
                 TypeRef::Named(s) => params.push(format!("C{} {}", s, p.name)),
                 other => params.push(format!("{} {}", to_cython_type(other), p.name)),
@@ -103,11 +117,21 @@ pub fn generate_pxd(module: &crate::ir::Module, lib_name: &str) -> String {
 
         let params = params.join(", ");
 
-        if matches!(&fn_def.ret, TypeRef::Option(_)) || fn_def.params.iter().any(|p| matches!(&p.ty, TypeRef::Option(_))) {
-            out.push_str("    # Note: Rust param/return must use *const <type> (not Option<T> directly)\n");
+        if matches!(&fn_def.ret, TypeRef::Option(_))
+            || fn_def
+                .params
+                .iter()
+                .any(|p| matches!(&p.ty, TypeRef::Option(_)))
+        {
+            out.push_str(
+                "    # Note: Rust param/return must use *const <type> (not Option<T> directly)\n",
+            );
         }
 
-        out.push_str(&format!("    {} c_{} \"{}\"({})\n", ret, fn_def.name, fn_def.name, params));
+        out.push_str(&format!(
+            "    {} c_{} \"{}\"({})\n",
+            ret, fn_def.name, fn_def.name, params
+        ));
         out.push('\n');
     }
 

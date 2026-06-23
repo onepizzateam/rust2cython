@@ -1,4 +1,4 @@
-use crate::ir::{FnDef, ShimFn, ShimParam, TypeRef, FfiType};
+use crate::ir::{FfiType, FnDef, ShimFn, ShimParam, TypeRef};
 
 pub fn plan_shim(fn_def: &FnDef) -> ShimFn {
     // helper to map parameter types

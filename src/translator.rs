@@ -2,13 +2,15 @@ use crate::ir::{PrimKind, TypeRef};
 
 pub fn to_cython_type(ty: &crate::ir::TypeRef) -> String {
     match ty {
-        TypeRef::Primitive(PrimKind::I8
+        TypeRef::Primitive(
+            PrimKind::I8
             | PrimKind::I16
             | PrimKind::I32
             | PrimKind::U8
             | PrimKind::U16
             | PrimKind::U32
-            | PrimKind::Usize) => "int".to_string(),
+            | PrimKind::Usize,
+        ) => "int".to_string(),
         TypeRef::Primitive(PrimKind::I64 | PrimKind::U64) => "long long".to_string(),
         TypeRef::Primitive(PrimKind::F32) => "float".to_string(),
         TypeRef::Primitive(PrimKind::F64) => "double".to_string(),
@@ -45,7 +47,10 @@ pub fn to_cython_type(ty: &crate::ir::TypeRef) -> String {
 }
 
 pub fn needs_wrapper(ty: &crate::ir::TypeRef) -> bool {
-    matches!(ty, TypeRef::Str | TypeRef::Vec(_) | TypeRef::Option(_) | TypeRef::Result(_, _))
+    matches!(
+        ty,
+        TypeRef::Str | TypeRef::Vec(_) | TypeRef::Option(_) | TypeRef::Result(_, _)
+    )
 }
 
 pub fn python_return_expr(ty: &crate::ir::TypeRef, raw_expr: &str) -> String {

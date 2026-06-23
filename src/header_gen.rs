@@ -36,18 +36,16 @@ pub fn generate_header(module: &crate::ir::Module, _lib_name: &str) -> String {
                 TypeRef::Str => "const char*".to_string(),
                 TypeRef::Named(n) => n.clone(),
                 TypeRef::Void => "void".to_string(),
-                other => {
-                    match other {
-                        TypeRef::Vec(inner) => {
-                            if let Some(pic) = prim_to_c(inner) {
-                                format!("const {0}* /* {1}_len */", pic, f.name)
-                            } else {
-                                "/* unsupported field type */".to_string()
-                            }
+                other => match other {
+                    TypeRef::Vec(inner) => {
+                        if let Some(pic) = prim_to_c(inner) {
+                            format!("const {0}* /* {1}_len */", pic, f.name)
+                        } else {
+                            "/* unsupported field type */".to_string()
                         }
-                        _ => "/* unsupported field type */".to_string(),
                     }
-                }
+                    _ => "/* unsupported field type */".to_string(),
+                },
             };
             out.push_str(&format!("    {} {};\n", cty, f.name));
         }
@@ -58,7 +56,10 @@ pub fn generate_header(module: &crate::ir::Module, _lib_name: &str) -> String {
     for fn_def in &module.functions {
         let mut unsupported = None::<String>;
 
-        fn map_type(ty: &TypeRef, prim_to_c: &dyn Fn(&TypeRef) -> Option<String>) -> Result<String, String> {
+        fn map_type(
+            ty: &TypeRef,
+            prim_to_c: &dyn Fn(&TypeRef) -> Option<String>,
+        ) -> Result<String, String> {
             match ty {
                 TypeRef::Primitive(_) => Ok(prim_to_c(ty).unwrap()),
                 TypeRef::Str => Ok("const char*".to_string()),
@@ -108,17 +109,22 @@ pub fn generate_header(module: &crate::ir::Module, _lib_name: &str) -> String {
                         break;
                     }
                 }
-                other => {
-                    match map_type(other, &prim_to_c) {
-                        Ok(s) => params_out.push(format!("{} {}", s, p.name)),
-                        Err(e) => { unsupported = Some(e); break; }
+                other => match map_type(other, &prim_to_c) {
+                    Ok(s) => params_out.push(format!("{} {}", s, p.name)),
+                    Err(e) => {
+                        unsupported = Some(e);
+                        break;
                     }
-                }
+                },
             }
         }
 
         if unsupported.is_some() {
-            out.push_str(&format!("/* skipped: {} — {} */\n\n", fn_def.name, unsupported.unwrap()));
+            out.push_str(&format!(
+                "/* skipped: {} — {} */\n\n",
+                fn_def.name,
+                unsupported.unwrap()
+            ));
             continue;
         }
 
@@ -130,22 +136,42 @@ pub fn generate_header(module: &crate::ir::Module, _lib_name: &str) -> String {
                     ret_extra.push("size_t out_len".to_string());
                     "void".to_string()
                 } else {
-                    out.push_str(&format!("/* skipped: {} — Vec<non-primitive> return */\n\n", fn_def.name));
+                    out.push_str(&format!(
+                        "/* skipped: {} — Vec<non-primitive> return */\n\n",
+                        fn_def.name
+                    ));
                     continue;
                 }
             }
             TypeRef::Option(inner) => {
-                if let Some(c) = prim_to_c(inner) { format!("const {}*", c) } else { out.push_str(&format!("/* skipped: {} — Option<non-primitive> return */\n\n", fn_def.name)); continue; }
-            }
-            TypeRef::Result(ok, _err) => {
-                if let Some(c) = prim_to_c(ok) { c } else { out.push_str(&format!("/* skipped: {} — Result<non-primitive,_> return */\n\n", fn_def.name)); continue; }
-            }
-            other => {
-                match map_type(other, &prim_to_c) {
-                    Ok(s) => s,
-                    Err(e) => { out.push_str(&format!("/* skipped: {} — {} */\n\n", fn_def.name, e)); continue; }
+                if let Some(c) = prim_to_c(inner) {
+                    format!("const {}*", c)
+                } else {
+                    out.push_str(&format!(
+                        "/* skipped: {} — Option<non-primitive> return */\n\n",
+                        fn_def.name
+                    ));
+                    continue;
                 }
             }
+            TypeRef::Result(ok, _err) => {
+                if let Some(c) = prim_to_c(ok) {
+                    c
+                } else {
+                    out.push_str(&format!(
+                        "/* skipped: {} — Result<non-primitive,_> return */\n\n",
+                        fn_def.name
+                    ));
+                    continue;
+                }
+            }
+            other => match map_type(other, &prim_to_c) {
+                Ok(s) => s,
+                Err(e) => {
+                    out.push_str(&format!("/* skipped: {} — {} */\n\n", fn_def.name, e));
+                    continue;
+                }
+            },
         };
 
         for ep in ret_extra.iter() {
@@ -153,7 +179,10 @@ pub fn generate_header(module: &crate::ir::Module, _lib_name: &str) -> String {
         }
 
         let params_joined = params_out.join(", ");
-        out.push_str(&format!("{} {}({});\n\n", ret_type, fn_def.name, params_joined));
+        out.push_str(&format!(
+            "{} {}({});\n\n",
+            ret_type, fn_def.name, params_joined
+        ));
     }
 
     out
