@@ -111,16 +111,27 @@ pub fn generate_shim(module: &Module) -> String {
         let mut skip_due_to_param = None;
         for p in &shim.params {
             if let crate::ir::FfiType::Unsupported(msg) = &p.ffi_ty {
+                // print warning to stderr
+                eprintln!("WARNING: skipping fn '{}' — {}", shim.original_name, msg);
+                // emit explanatory SKIPPED comment in shim file
+                out.push_str(&format!(
+                    "// SKIPPED: fn {}\n// Reason: {}\n// Unsupported type — implement this FFI wrapper manually.\n\n",
+                    shim.original_name, msg
+                ));
                 skip_due_to_param = Some(msg.clone());
                 break;
             }
         }
         if let crate::ir::FfiType::Unsupported(msg) = &shim.ffi_ret {
-            out.push_str(&format!("// SKIPPED fn {}: {}\n\n", shim.original_name, msg));
+            eprintln!("WARNING: skipping fn '{}' — {}", shim.original_name, msg);
+            out.push_str(&format!(
+                "// SKIPPED: fn {}\n// Reason: {}\n// Unsupported type — implement this FFI wrapper manually.\n\n",
+                shim.original_name, msg
+            ));
             continue;
         }
         if let Some(msg) = skip_due_to_param {
-            out.push_str(&format!("// SKIPPED fn {}: {}\n\n", shim.original_name, msg));
+            // already emitted above
             continue;
         }
 

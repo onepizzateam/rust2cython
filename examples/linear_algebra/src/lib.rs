@@ -1,4 +1,6 @@
 /// Dot product of two vectors (must be same length)
+mod linear_algebra_ffi;
+
 pub fn dot_product(a: Vec<f64>, b: Vec<f64>) -> f64 {
     a.iter().zip(b.iter()).map(|(x, y)| x * y).sum()
 }
@@ -20,4 +22,3 @@ pub fn determinant(m: Matrix2x2) -> f64 {
     m.a * m.d - m.b * m.c
 }
 
-mod linear_algebra_ffi;

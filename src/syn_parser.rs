@@ -179,5 +179,14 @@ pub fn parse_rust_file(path: &std::path::Path) -> anyhow::Result<crate::ir::Modu
         }
     }
 
+    // Report discovered public functions to stdout
+    if module.functions.is_empty() {
+        println!("  WARNING: no pub fn found. Are your functions marked pub?");
+    } else {
+        for fn_def in &module.functions {
+            println!("  found pub fn: {}", fn_def.name);
+        }
+    }
+
     Ok(module)
 }

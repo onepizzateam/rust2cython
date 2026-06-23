@@ -1,4 +1,4 @@
-pub fn generate_setup_files(lib_name: &str, rust_source: &str) -> (String, String) {
+pub fn generate_setup_files(lib_name: &str, _rust_source: &str) -> (String, String) {
     let setup = format!(
         r###"from setuptools import setup
 from Cython.Build import cythonize
@@ -13,6 +13,7 @@ extensions = [
         library_dirs=["."],
         include_dirs=[np.get_include()],
         extra_compile_args=["-O3"],
+        extra_link_args=["-Wl,-rpath,$ORIGIN"],
     )
 ]
 
@@ -37,39 +38,82 @@ requires-python = ">=3.8"
 dependencies = ["numpy"]
 
 [tool.rust2cython]
-source = "{src}"
 generated_by = "rust2cython"
 "###,
-        name = lib_name,
-        src = rust_source
+        name = lib_name
     );
 
     (setup, pyproject)
 }
 
+pub fn generate_requirements() -> String {
+    "cython\nnumpy\nsetuptools\n".to_string()
+}
+
 pub fn generate_build_instructions(lib_name: &str) -> String {
+    let name = lib_name;
     format!(
         r###"#!/bin/sh
-# Build the Rust library first
+set -e
+
+LIB_NAME="{name}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+CRATE_ROOT="$(dirname "$SCRIPT_DIR")"
+
+echo "NOTE: rust2cython patched your src/lib.rs and added"
+echo "  src/{name}_ffi.rs — do not edit these manually."
+echo "  Rerun rust2cython to regenerate."
+echo ""
+
+echo "[1/5] Building Rust crate..."
+cd "$CRATE_ROOT"
 cargo build --release
 
-# Copy the compiled library to the current directory
-# (adjust the extension for your OS: .so on Linux, .dylib on macOS, .dll on Windows)
-cp target/release/lib{lib}.so ./{lib}.so   # Linux
-# cp target/release/lib{lib}.dylib ./{lib}.so  # macOS
+SO_SRC="$CRATE_ROOT/target/release/lib${{LIB_NAME}}.so"
+if [ ! -f "$SO_SRC" ]; then
+    echo "ERROR: $SO_SRC not found. Did cargo build succeed?"
+    exit 1
+fi
 
-# Copy the generated shim into your src/ directory
-# cp {lib}_ffi.rs path/to/your/crate/src/
-# Then add this line to your lib.rs:
-# mod {lib}_ffi;
+echo "[2/5] Copying shared library..."
+cp "$SO_SRC" "$SCRIPT_DIR/"
 
-# Build and install the Python extension
-pip install cython numpy
-python setup.py build_ext --inplace
+if [ ! -f "$SCRIPT_DIR/{name}.h" ]; then
+    echo "ERROR: {name}.h not found in $SCRIPT_DIR"
+    echo "Rerun: rust2cython src/lib.rs -o <output_dir>/ -n {name}"
+    exit 1
+fi
 
-# Test the import
-python -c "import {lib}; print('{lib} imported successfully')"
+echo "[3/5] Installing Python dependencies..."
+cd "$SCRIPT_DIR"
+pip3 install -r requirements.txt
+
+echo "[4/5] Building Cython extension..."
+python3 setup.py build_ext --inplace
+
+SO_EXT=$(find build/ -name "*.so" 2>/dev/null | head -1)
+if [ -z "$SO_EXT" ]; then
+    echo "ERROR: Cython build produced no .so file."
+    echo "Check compiler output above for errors."
+    exit 1
+fi
+cp "$SO_EXT" "$SCRIPT_DIR/"
+
+echo "[5/5] Verifying import..."
+if python3 -c "import ${{LIB_NAME}}; print('${{LIB_NAME}} imported successfully')"; then
+    echo ""
+    echo "SUCCESS. Run your Python script with:"
+    echo "  LD_LIBRARY_PATH=\"$SCRIPT_DIR\" PYTHONPATH=\"$SCRIPT_DIR\" python3 your_script.py"
+    echo ""
+    echo "Or add permanently to your shell:"
+    echo "  export LD_LIBRARY_PATH=\"$SCRIPT_DIR\""
+    echo "  export PYTHONPATH=\"$SCRIPT_DIR\""
+else
+    echo "ERROR: import failed after successful build."
+    echo "Run: ldd ${{LIB_NAME}}*.so to diagnose missing libraries."
+    exit 1
+fi
 "###,
-        lib = lib_name
+        name = name
     )
 }

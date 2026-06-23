@@ -16,5 +16,5 @@ cdef extern from "linear_algebra.h":
 
     double c_norm "norm"(const double* v, size_t v_len)
 
-    double c_determinant "determinant"(Matrix2x2 m)
+    double c_determinant "determinant"(CMatrix2x2 m)
 

@@ -15,5 +15,5 @@ print(f"norm:        {la.norm(a):.4f}")            # 3.7417
 print(f"scaled:      {la.scale(a, 2.0)}")          # [2. 4. 6.]
 
 # matrix determinant
-m = la.Matrix2x2(a=1.0, b=2.0, c=3.0, d=4.0)
+m = la.PyMatrix2x2(a=1.0, b=2.0, c=3.0, d=4.0)
 print(f"determinant: {la.determinant(m)}")         # -2.0
