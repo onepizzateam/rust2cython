@@ -58,6 +58,11 @@ cargo build --release
 cp target/release/lib{lib}.so ./{lib}.so   # Linux
 # cp target/release/lib{lib}.dylib ./{lib}.so  # macOS
 
+# Copy the generated shim into your src/ directory
+# cp {lib}_ffi.rs path/to/your/crate/src/
+# Then add this line to your lib.rs:
+# mod {lib}_ffi;
+
 # Build and install the Python extension
 pip install cython numpy
 python setup.py build_ext --inplace

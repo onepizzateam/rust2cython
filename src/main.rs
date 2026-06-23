@@ -1,6 +1,8 @@
 mod buildrs_gen;
 mod header_parser;
 mod ir;
+mod shim_planner;
+mod shim_gen;
 mod pxd_gen;
 mod pyx_gen;
 mod setuptools_gen;
@@ -36,6 +38,10 @@ struct Args {
     /// Skip generating setup.py / pyproject.toml / BUILD.sh
     #[arg(long, action = clap::ArgAction::SetTrue)]
     no_setup: bool,
+
+    /// Skip generating the Rust shim (_ffi.rs)
+    #[arg(long, action = clap::ArgAction::SetTrue)]
+    no_shim: bool,
 }
 
 fn main() {
@@ -121,6 +127,17 @@ fn main() {
         std::process::exit(1);
     }
 
+    let mut shim_written = false;
+    if !args.no_shim {
+        let shim = shim_gen::generate_shim(&module);
+        let shim_path = args.output.join(format!("{}_ffi.rs", name));
+        if let Err(e) = std::fs::write(&shim_path, shim) {
+            eprintln!("Error: failed to write {}: {}", shim_path.display(), e);
+            std::process::exit(1);
+        }
+        shim_written = true;
+    }
+
     if !args.no_setup {
         let rs_source = args.input.to_str().unwrap_or("");
         let (setup_py, pyproject) = setuptools_gen::generate_setup_files(&name, rs_source);
@@ -143,18 +160,38 @@ fn main() {
             std::process::exit(1);
         }
 
-        println!(
-            "Generated {}.pxd, {}.pyx, setup.py, pyproject.toml, BUILD.sh in {}",
-            name,
-            name,
-            args.output.display()
-        );
+        if shim_written {
+            println!(
+                "Generated {}.pxd, {}.pyx, {}_ffi.rs, setup.py, pyproject.toml, BUILD.sh in {}",
+                name,
+                name,
+                name,
+                args.output.display()
+            );
+        } else {
+            println!(
+                "Generated {}.pxd, {}.pyx, setup.py, pyproject.toml, BUILD.sh in {}",
+                name,
+                name,
+                args.output.display()
+            );
+        }
     } else {
-        println!(
-            "Generated {}.pxd and {}.pyx in {}",
-            name,
-            name,
-            args.output.display()
-        );
+        if shim_written {
+            println!(
+                "Generated {}.pxd, {}.pyx, {}_ffi.rs in {}",
+                name,
+                name,
+                name,
+                args.output.display()
+            );
+        } else {
+            println!(
+                "Generated {}.pxd and {}.pyx in {}",
+                name,
+                name,
+                args.output.display()
+            );
+        }
     }
 }

@@ -73,3 +73,30 @@ pub struct Module {
     pub structs: Vec<StructDef>,
     pub enums: Vec<EnumDef>,
 }
+
+#[derive(Debug, Clone)]
+pub struct ShimParam {
+    pub name: String,
+    pub original_ty: TypeRef,
+    pub ffi_ty: FfiType,
+}
+
+#[derive(Debug, Clone)]
+pub struct ShimFn {
+    pub original_name: String,
+    pub shim_name: String,
+    pub params: Vec<ShimParam>,
+    pub ret: TypeRef,
+    pub ffi_ret: FfiType,
+}
+
+#[derive(Debug, Clone)]
+pub enum FfiType {
+    Direct(TypeRef),
+    CStr,
+    SlicePtr { inner: TypeRef },
+    OptionPtr { inner: TypeRef },
+    ResultWithErrOut { ok: TypeRef },
+    SliceOut { inner: TypeRef },
+    Unsupported(String),
+}

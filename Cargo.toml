@@ -2,6 +2,12 @@
 name = "rust2cython"
 version = "0.1.0"
 edition = "2021"
+description = "Generate Cython .pxd/.pyx bindings from Rust source automatically"
+license = "MIT"
+repository = "https://github.com/onepizzateam/rust2cython"
+keywords = ["cython", "ffi", "bindings", "codegen", "python"]
+categories = ["development-tools", "api-bindings"]
+readme = "README.md"
 
 [dependencies]
 anyhow = "1"

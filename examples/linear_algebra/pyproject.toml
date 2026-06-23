@@ -10,5 +10,5 @@ requires-python = ">=3.8"
 dependencies = ["numpy"]
 
 [tool.rust2cython]
-source = "examples/linear_algebra/src/lib.rs"
+source = "C:\Users\palak_uge27\rust2cython\examples\linear_algebra\src\lib.rs"
 generated_by = "rust2cython"
