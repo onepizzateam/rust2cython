@@ -168,7 +168,9 @@ fn main() {
             while let Some(pos) = new_content.find(&mod_line) {
                 let rem_end = pos + mod_line.len();
                 let mut tail = rem_end;
-                while tail < new_content.len() && (new_content.as_bytes()[tail] == b'\n' || new_content.as_bytes()[tail] == b'\r') {
+                while tail < new_content.len()
+                    && (new_content.as_bytes()[tail] == b'\n' || new_content.as_bytes()[tail] == b'\r')
+                {
                     tail += 1;
                 }
                 new_content.replace_range(pos..tail, "");
@@ -196,7 +198,7 @@ fn main() {
         let setup_path = args.output.join("setup.py");
         let pyproject_path = args.output.join("pyproject.toml");
         let build_path = args.output.join("BUILD.sh");
-            let requirements_path = args.output.join("requirements.txt");
+        let requirements_path = args.output.join("requirements.txt");
 
         if let Err(e) = std::fs::write(&setup_path, setup_py) {
             eprintln!("Error: failed to write {}: {}", setup_path.display(), e);
@@ -210,11 +212,11 @@ fn main() {
             eprintln!("Error: failed to write {}: {}", build_path.display(), e);
             std::process::exit(1);
         }
-            // write requirements.txt
-            if let Err(e) = std::fs::write(&requirements_path, setuptools_gen::generate_requirements()) {
-                eprintln!("Error: failed to write {}: {}", requirements_path.display(), e);
-                std::process::exit(1);
-            }
+        // write requirements.txt
+        if let Err(e) = std::fs::write(&requirements_path, setuptools_gen::generate_requirements()) {
+            eprintln!("Error: failed to write {}: {}", requirements_path.display(), e);
+            std::process::exit(1);
+        }
 
         if shim_written {
             println!(
