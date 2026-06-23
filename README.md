@@ -1,14 +1,33 @@
 # rust2cython 🦀→🐍
 
-> Rust library → pip-installable Python package. Automatically.
+> Automatically generate Cython `.pxd`/`.pyx` bindings and a complete build pipeline from idiomatic Rust source.
 
 ```bash
 rust2cython src/lib.rs -o bindings/ -n mylib
 cd bindings && sh BUILD.sh
+# → mylib.pxd, mylib.pyx, mylib.h, setup.py, BUILD.sh generated
+# → Rust crate compiled
+# → Cython extension built
+# → import verified
 LD_LIBRARY_PATH="$PWD/bindings" PYTHONPATH="$PWD/bindings" python3 your_script.py
 ```
 
-That's it. No glue code. No manual `.pxd`. No FFI boilerplate.
+---
+
+## what it actually does
+
+You write idiomatic Rust. `rust2cython` generates:
+
+- `mylib.pxd` — Cython declaration file
+- `mylib.pyx` — Cython wrapper with Python classes and type conversion
+- `mylib.h` — C header matching the exported symbols
+- `src/mylib_ffi.rs` — Rust FFI shim (injected into your crate automatically)
+- `setup.py` + `pyproject.toml` — builds the Cython extension
+- `BUILD.sh` — runs cargo build, compiles Cython, verifies the import
+
+You never write `#[no_mangle]`, `extern "C"`, or `.pxd` files by hand.
+
+**What it does not do (yet):** generate a wheel or make your library `pip install`-able. That's v0.2. Right now it gives you a working local build you can import from Python with two env vars set.
 
 ---
 
@@ -22,47 +41,69 @@ PyO3 is great if you're starting fresh. But if you have an existing Cython codeb
 
 ---
 
-## what it generates
+## realistic before/after
 
-Given this idiomatic Rust:
+**Before** — you write all of this manually for every function:
 
-```rust
-pub struct Point { pub x: f64, pub y: f64 }
-
-pub fn distance(p: Point) -> f64 {
-    (p.x * p.x + p.y * p.y).sqrt()
-}
-
-pub fn safe_div(a: i32, b: i32) -> Result<i32, String> {
-    if b == 0 { Err("divide by zero".into()) } else { Ok(a / b) }
-}
+```pxd
+# mylib.pxd
+cdef extern from "mylib.h":
+    ctypedef struct CPoint "Point":
+        double x
+        double y
+    double c_distance "distance"(CPoint p)
 ```
 
-You get this Python:
+```pyx
+# mylib.pyx
+cdef class Point:
+    cdef CPoint _c
+    def __init__(self, double x, double y):
+        self._c.x = x
+        self._c.y = y
 
-```python
-import mylib
-
-p = mylib.Point(3.0, 4.0)
-print(mylib.distance(p))      # 5.0
-
-print(mylib.safe_div(10, 2))  # 5
-mylib.safe_div(10, 0)         # raises RuntimeError: divide by zero
+def distance(p: Point) -> float:
+    cdef CPoint _p_c = p._c
+    cdef double _result = c_distance(_p_c)
+    return _result
 ```
 
-`rust2cython` generates six files:
+**After** — you run one command and get all of the above generated.
 
-```
-bindings/
-  mylib.pxd       ← Cython declaration file
-  mylib.pyx       ← Cython wrapper with Python classes
-  mylib.h         ← C header matching the exported symbols
-  setup.py        ← builds the Cython extension
-  pyproject.toml
-  BUILD.sh        ← one script that does everything
+---
+
+## requirements
+
+### to run rust2cython
+
+- Rust toolchain (`cargo`, `rustc`) — [install](https://rustup.rs)
+
+### to build the generated output (on Linux)
+
+- `gcc` / `build-essential`
+- Python 3.8+
+- A virtualenv with `cython`, `numpy`, `setuptools`:
+
+```bash
+python3 -m venv ~/.venv
+source ~/.venv/bin/activate
+pip install cython numpy setuptools
 ```
 
-It also patches your `src/lib.rs` to add `mod mylib_ffi;` and writes `src/mylib_ffi.rs` — the Rust FFI shim that exports your idiomatic functions over C ABI. You never write `#[no_mangle]` or `extern "C"` by hand.
+`BUILD.sh` calls `pip install -r requirements.txt` automatically, but on Debian/Ubuntu systems with externally-managed Python you need to activate a venv first:
+
+```bash
+source ~/.venv/bin/activate
+sh BUILD.sh
+```
+
+### platform support
+
+| Platform | Status |
+|----------|--------|
+| Linux | ✅ works |
+| macOS | ⚠️ swap `.so` → `.dylib` in `BUILD.sh` manually |
+| Windows | ❌ not supported yet |
 
 ---
 
@@ -78,23 +119,16 @@ Or from source:
 git clone https://github.com/onepizzateam/rust2cython
 cd rust2cython
 cargo build --release
+# binary at target/release/rust2cython
 ```
+
+No crates.io release yet — install from source for now.
 
 ---
 
 ## how it works
 
-Unlike tools that use regex or string matching, `rust2cython` is built on [`syn`](https://github.com/dtolnay/syn) — the same AST parser used by the Rust compiler's proc-macro ecosystem. It walks the full Rust type tree: generics, references, nested types, visibility — all handled at the AST level.
-
-```
-pub fn safe_div(a: i32, b: i32) -> Result<i32, String>
-                                   ^^^^^^^^^^^^^^^^^^^
-                                   syn parses this as a proper AST node,
-                                   not a string — so nested types
-                                   work just as well.
-```
-
-The generated bindings are as accurate as what `rustc` itself sees, not a best-effort guess from pattern matching.
+Unlike tools that use regex or string matching, `rust2cython` is built on [`syn`](https://github.com/dtolnay/syn) — the same AST parser used by the Rust compiler's proc-macro ecosystem. It walks the full Rust type tree: generics, references, nested types, visibility — all handled at the AST level, not pattern matching.
 
 ---
 
@@ -118,13 +152,16 @@ Options:
 ### typical workflow
 
 ```bash
-# generate everything
+# 1. generate everything
 rust2cython src/lib.rs -o bindings/ -n mylib
 
-# build (handles cargo build, Cython compile, import verification)
-cd bindings && sh BUILD.sh
+# 2. activate your venv (needed on Debian/Ubuntu)
+source ~/.venv/bin/activate
 
-# run
+# 3. build
+sh bindings/BUILD.sh
+
+# 4. run
 LD_LIBRARY_PATH="$PWD/bindings" PYTHONPATH="$PWD/bindings" python3 your_script.py
 ```
 
@@ -135,57 +172,66 @@ cbindgen --output mylib.h
 rust2cython mylib.h -o bindings/ -n mylib
 ```
 
-### only the Cython files
-
-```bash
-rust2cython src/lib.rs --no-setup
-```
-
 ---
 
 ## type support
 
-| Rust | Python |
-|------|--------|
-| `i32`, `u32`, `i64`, `f64`, `bool`, etc. | native numeric types |
+| Rust type | Python |
+|-----------|--------|
+| `i8` `i16` `i32` `i64` `u8` `u16` `u32` `u64` `f32` `f64` `bool` `usize` | native numeric types |
 | `&str`, `String` | `str` (encode/decode handled automatically) |
-| `Vec<f64>` / `Vec<i32>` etc. | `numpy` array via memoryview |
-| `Option<T>` | `None` or value |
-| `Result<T, E>` | return value or `RuntimeError` |
-| `pub struct Foo` | `cdef class Foo` with typed constructor |
+| `Vec<f64>`, `Vec<i32>` etc. | `numpy` array via memoryview |
+| `Option<T>` where T is primitive | `None` or value |
+| `Result<T, String>` where T is primitive | return value or `RuntimeError` |
+| `pub struct Foo` with primitive fields | `cdef class Foo` with typed constructor |
+
+Unsupported types are skipped and reported on stderr — you always know exactly what wasn't handled and why.
 
 ---
 
 ## current limitations
 
-v0.1 — works, but with known gaps:
-
-- `Vec<T>` supports numeric primitives only (`Vec<String>`, `Vec<Struct>` skipped with a warning)
-- `Option<String>` not yet supported
-- Nested generics (e.g. `Option<Vec<f64>>`) are skipped with a `# WARNING` comment in the output
+- `Vec<T>` supports numeric primitives only — `Vec<String>` and `Vec<Struct>` are skipped with a warning
+- `Option<String>` not supported
+- Nested generics (`Option<Vec<f64>>`) skipped with a warning
 - Enums with data not supported — C-style enums only
-- Linux only — macOS users need to swap `.so` for `.dylib` in `BUILD.sh`
-- String-returning functions require the Rust side to use `CString::into_raw()` — the generated shim handles this but memory must be freed manually (a `rust2cython_free_string` helper is generated in the shim)
-
-Skipped functions are reported on stderr so you always know what wasn't handled.
+- Linux only
+- No wheel generation — the output is a local build, not a distributable package
+- String-returning functions use `CString::into_raw()` in the generated shim — memory must be freed manually via the generated `rust2cython_free_string` helper
 
 ---
 
 ## examples
+
+Both examples include the full generated output so you can see exactly what the tool produces before running it.
 
 - [`examples/linear_algebra/`](examples/linear_algebra/) — dot product, norm, scale, matrix determinant
 - [`examples/bio_sequence/`](examples/bio_sequence/) — GC content, reverse complement, motif search
 
 ---
 
+## v0.2 scope
+
+The main goal for v0.2 is making the output actually distributable:
+
+- **Wheel generation** — `BUILD.sh` produces a `.whl` file you can `pip install` anywhere
+- **macOS support** — `.dylib` handling and correct `rpath` for macOS
+- **Auto-freeing string wrappers** — no manual memory management for string returns
+- **`Vec<String>` support**
+- **`PYTHONPATH`/`LD_LIBRARY_PATH` baked in** — no env vars needed at runtime
+
+PRs and issues welcome. If you have a real Rust library this doesn't handle correctly, open an issue with the `.rs` file attached — that's the most useful contribution right now.
+
+---
+
 ## contributing
 
-Most useful contributions right now:
-
-- Real `.rs` files that produce wrong or missing output — open an issue with the file
-- `Vec<String>` and `Option<String>` support
-- macOS `BUILD.sh` variant
-- Auto-freeing string wrappers
+```bash
+git clone https://github.com/onepizzateam/rust2cython
+cd rust2cython
+cargo build
+cargo test
+```
 
 ---
 
