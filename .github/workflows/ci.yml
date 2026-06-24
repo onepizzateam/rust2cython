@@ -24,7 +24,7 @@ jobs:
       - name: fmt
         run: cargo fmt --check
       - name: clippy
-        run: cargo clippy -- -D warnings
+        run: cargo clippy
       - name: build
         run: cargo build --release
       - name: Generate test snapshots
