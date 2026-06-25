@@ -94,7 +94,9 @@ pub fn generate_header(module: &crate::ir::Module, _lib_name: &str) -> String {
         for p in &fn_def.params {
             match &p.ty {
                 TypeRef::Vec(inner) => {
-                    if let Some(c) = prim_to_c(inner) {
+                    if **inner == TypeRef::Str {
+                        params_out.push(format!("const char** {}, size_t {}_len", p.name, p.name));
+                    } else if let Some(c) = prim_to_c(inner) {
                         params_out.push(format!("const {}* {}, size_t {}_len", c, p.name, p.name));
                     } else {
                         unsupported = Some(format!("Vec<non-primitive> in param {}", p.name));
@@ -131,7 +133,10 @@ pub fn generate_header(module: &crate::ir::Module, _lib_name: &str) -> String {
         let mut ret_extra: Vec<String> = Vec::new();
         let ret_type = match &fn_def.ret {
             TypeRef::Vec(inner) => {
-                if let Some(c) = prim_to_c(inner) {
+                if **inner == TypeRef::Str {
+                    ret_extra.push("size_t* out_len".to_string());
+                    "char**".to_string()
+                } else if let Some(c) = prim_to_c(inner) {
                     ret_extra.push(format!("{}* out", c));
                     ret_extra.push("size_t out_len".to_string());
                     "void".to_string()
@@ -184,6 +189,9 @@ pub fn generate_header(module: &crate::ir::Module, _lib_name: &str) -> String {
             ret_type, fn_def.name, params_joined
         ));
     }
+
+    out.push_str("void rust2cython_free_string(char* ptr);\n");
+    out.push_str("void rust2cython_free_string_array(char** ptr, size_t len);\n\n");
 
     out
 }
