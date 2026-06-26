@@ -7,13 +7,7 @@ pub fn generate_setup_files(
     let rpath_detection = match platform {
         "macos" => "rpath_arg = \"-Wl,-rpath,@loader_path\"",
         "linux" => "rpath_arg = \"-Wl,-rpath,$ORIGIN\"",
-        _ => r###"import sys
-# Detect platform for rpath
-if sys.platform == "darwin":
-    rpath_arg = "-Wl,-rpath,@loader_path"
-else:
-    rpath_arg = "-Wl,-rpath,$ORIGIN"
-"###,
+        _ => "import sys\nif sys.platform == 'darwin':\n    rpath_arg = \"-Wl,-rpath,@loader_path\"\nelse:\n    rpath_arg = \"-Wl,-rpath,$ORIGIN\"\n",
     };
 
     let setup = format!(
@@ -41,7 +35,8 @@ setup(
     ext_modules=cythonize(extensions, language_level="3"),
 )
 "###,
-        name = lib_name
+        name = lib_name,
+        rpath_detection = rpath_detection,
     );
 
     let pyproject = format!(
@@ -66,7 +61,7 @@ include-package-data = true
 generated_by = "rust2cython"
 "###,
         name = lib_name,
-        version = version
+        version = version,
     );
 
     (setup, pyproject)
@@ -77,42 +72,55 @@ pub fn generate_requirements() -> String {
 }
 
 pub fn generate_dev_requirements() -> String {
-    r###"# requirements-dev.txt — tools for repairing wheels
-# On Linux: auditwheel
-# On macOS: delocate
-auditwheel
-delocate
-"###
-    .to_string()
+    "# requirements-dev.txt — tools for repairing wheels\n# On Linux: auditwheel\n# On macOS: delocate\nauditwheel\ndelocate\n".to_string()
 }
 
 pub fn generate_build_instructions(lib_name: &str, platform: &str, emit_wheel: bool) -> String {
     let name = lib_name;
+
     let os_detection = match platform {
-        "macos" => r###"OS_NAME="Darwin"
-SO_NAME="lib${LIB_NAME}.dylib""###,
-        "linux" => r###"OS_NAME="Linux"
-SO_NAME="lib${LIB_NAME}.so""###,
-        _ => r###"OS_NAME=$(uname -s)
-if [ "$OS_NAME" = "Darwin" ]; then
-    SO_NAME="lib${LIB_NAME}.dylib"
-else
-    SO_NAME="lib${LIB_NAME}.so"
-fi"###,
+        "macos" => "OS_NAME=\"Darwin\"\nSO_NAME=\"lib${LIB_NAME}.dylib\"",
+        "linux" => "OS_NAME=\"Linux\"\nSO_NAME=\"lib${LIB_NAME}.so\"",
+        _ => "OS_NAME=$(uname -s)\nif [ \"$OS_NAME\" = \"Darwin\" ]; then\n    SO_NAME=\"lib${LIB_NAME}.dylib\"\nelse\n    SO_NAME=\"lib${LIB_NAME}.so\"\nfi",
     };
 
-    let rpath_fix_pre_var = if platform == "linux" { 
-        format!("LD_LIBRARY_PATH=\"{}\"", "$SCRIPT_DIR")
-    } else { 
+    let step_count = if emit_wheel { "7" } else { "5" };
+
+    let wheel_steps = if emit_wheel {
+        r###"
+echo "[5/7] Building wheel..."
+python3 -m build --wheel --no-isolation
+
+echo "[6/7] Repairing wheel..."
+if [ "$OS_NAME" = "Darwin" ]; then
+    if command -v delocate-wheel >/dev/null 2>&1; then
+        delocate-wheel -v dist/*.whl
+    else
+        echo "WARNING: delocate-wheel not found. Install with: pip install delocate"
+    fi
+else
+    if command -v auditwheel >/dev/null 2>&1; then
+        auditwheel repair dist/*.whl
+        if [ -d "wheelhouse" ]; then
+            mv wheelhouse/*.whl dist/
+            rm -rf wheelhouse
+        fi
+    else
+        echo "WARNING: auditwheel not found. Install with: pip install auditwheel"
+    fi
+fi
+"###
+    } else {
+        ""
+    };
+
+    let wheel_msg = if emit_wheel {
+        format!("echo \"Wheel generated in dist/: pip install dist/{}-*.whl\"", name)
+    } else {
         "".to_string()
     };
-    let rpath_fix_post_var = match platform {
-        "macos" => "install_name_tool -add_rpath @loader_path $SO_EXT".to_string(),
-        "linux" => "patchelf --set-rpath \"\$ORIGIN\" $SO_EXT".to_string(),
-        _ => "".to_string(),
-    };
 
-    let start = format!(
+    format!(
         r###"#!/bin/sh
 set -e
 
@@ -127,132 +135,77 @@ echo "  src/{name}_ffi.rs — do not edit these manually."
 echo "  Rerun rust2cython to regenerate."
 echo ""
 
-echo "[1/5] Building Rust crate..."
+echo "[1/{step_count}] Building Rust crate..."
 cd "$CRATE_ROOT"
 cargo build --release
 
 SO_SRC="$CRATE_ROOT/target/release/$SO_NAME"
-    if [ ! -f "$SO_SRC" ]; then
-        echo "ERROR: $SO_SRC not found. Did cargo build succeed?"
-        exit 1
-    fi
+if [ ! -f "$SO_SRC" ]; then
+    echo "ERROR: $SO_SRC not found. Did cargo build succeed?"
+    exit 1
+fi
 
-    echo "[2/5] Copying shared library..."
-    cp "$SO_SRC" "$SCRIPT_DIR/"
+echo "[2/{step_count}] Copying shared library..."
+cp "$SO_SRC" "$SCRIPT_DIR/"
 
-    if [ ! -f "$SCRIPT_DIR/{name}.h" ]; then
-        echo "ERROR: {name}.h not found in $SCRIPT_DIR"
-echo "Rerun: rust2cython src/lib.rs -o <output_dir>/ -n {name}"
-exit 1
-    fi
+if [ ! -f "$SCRIPT_DIR/{name}.h" ]; then
+    echo "ERROR: {name}.h not found in $SCRIPT_DIR"
+    exit 1
+fi
 
-    echo "[3/5] Installing Python dependencies..."
-    cd "$SCRIPT_DIR"
-    pip3 install -r requirements.txt
+echo "[3/{step_count}] Installing Python dependencies..."
+cd "$SCRIPT_DIR"
+pip3 install -r requirements.txt
 
-    # These variables are only set if the respective tools are found
-    RPATH_FIX_PRE_VAR=""
-    RPATH_FIX_POST_VAR=""
-    if [ "$OS_NAME" = "Darwin" ]; then
-        if command -v install_name_tool >/dev/null 2>&1; then
-            RPATH_FIX_POST_VAR="{rpath_fix_post_var}"
-        else
-            echo "WARNING: install_name_tool not found. Dynamic library may not be portable. Install with: brew install cctools"
-        fi
-    elif [ "$OS_NAME" = "Linux" ]; then
-        if command -v patchelf >/dev/null 2>&1; then
-            RPATH_FIX_PRE_VAR="{rpath_fix_pre_var}"
-            RPATH_FIX_POST_VAR="{rpath_fix_post_var}"
-        else
-            echo "WARNING: patchelf not found. Dynamic library may not be portable. Install with: sudo apt install patchelf"
-        fi
-    fi
-
-    echo "[4/5] Building Cython extension..."
-    if [ -n "${RPATH_FIX_PRE_VAR}" ]; then
-        eval "${RPATH_FIX_PRE_VAR}" python3 setup.py build_ext --inplace
-    else
-        python3 setup.py build_ext --inplace
-    fi
-
-    SO_EXT=$(find build/ -name "*.so" 2>/dev/null | head -1)
-    if [ -z "$SO_EXT" ]; then
-        echo "ERROR: Cython build produced no .so file."
-        echo "Check compiler output above for errors."
-        exit 1
-    fi
-    cp "$SO_EXT" "$SCRIPT_DIR/"
-
-    if [ -n "${RPATH_FIX_POST_VAR}" ]; then
-        eval "${RPATH_FIX_POST_VAR}"
-    fi
-"###,
-        name = name,
-        rpath_fix_pre_var = rpath_fix_pre_var,
-        rpath_fix_post_var = rpath_fix_post_var,
-    );
-
-    let wheel_steps = if emit_wheel {
-        format!(
-            r###"
-echo "[5/6] Building wheel..."
-python3 -m build --wheel --no-isolation
-
-echo "[6/6] Repairing wheel..."
+RPATH_FIX_PRE=""
+RPATH_FIX_POST=""
 if [ "$OS_NAME" = "Darwin" ]; then
-    if command -v delocate-wheel >/dev/null 2>&1; then
-        delocate-wheel -v dist/*.whl
+    if command -v install_name_tool >/dev/null 2>&1; then
+        RPATH_FIX_POST="install_name_tool -add_rpath @loader_path"
     else
-        echo "WARNING: delocate-wheel not found. Wheel may not be portable.\nInstall with: pip install delocate"
+        echo "WARNING: install_name_tool not found. Install with: brew install cctools"
     fi
 else
-    if command -v auditwheel >/dev/null 2>&1; then
-        auditwheel repair dist/*.whl
-        # auditwheel repair puts the repaired wheel in wheelhouse/
-        if [ -d "wheelhouse" ]; then
-            mv wheelhouse/*.whl dist/
-            rm -rf wheelhouse
-        fi
+    if command -v patchelf >/dev/null 2>&1; then
+        RPATH_FIX_PRE="LD_LIBRARY_PATH=$SCRIPT_DIR"
+        RPATH_FIX_POST="patchelf --set-rpath \$ORIGIN"
     else
-        echo "WARNING: auditwheel not found. Wheel may not be portable.\nInstall with: sudo apt install auditwheel (Ubuntu) or pip install auditwheel"
+        echo "WARNING: patchelf not found. Install with: sudo apt install patchelf"
     fi
 fi
-"###
-        )
-    } else {
-        "".to_string()
-    };
 
-    let local_install_success_message = "Local build complete.";
+echo "[4/{step_count}] Building Cython extension..."
+if [ -n "$RPATH_FIX_PRE" ]; then
+    eval "$RPATH_FIX_PRE python3 setup.py build_ext --inplace"
+else
+    python3 setup.py build_ext --inplace
+fi
 
-    let footer = format!(
-        r###"
-echo "[{step_num}/5] Verifying import..."
-if python3 -c "import ${{LIB_NAME}}; print(\'${{LIB_NAME}} imported successfully\')"; then
+SO_EXT=$(find build/ -name "*.so" 2>/dev/null | head -1)
+if [ -z "$SO_EXT" ]; then
+    echo "ERROR: Cython build produced no .so file."
+    exit 1
+fi
+cp "$SO_EXT" "$SCRIPT_DIR/"
+
+if [ -n "$RPATH_FIX_POST" ]; then
+    eval "$RPATH_FIX_POST $SO_EXT"
+fi
+{wheel_steps}
+echo "[{step_count}/{step_count}] Verifying import..."
+if python3 -c "import {name}; print('{name} imported successfully')"; then
     echo ""
-    echo "SUCCESS. {local_install_success_message}"
+    echo "SUCCESS. Local build complete."
     {wheel_msg}
 else
     echo "ERROR: import failed after successful build."
-    if [ "$OS_NAME" = "Darwin" ]; then
-        echo "Run: otool -L ${{LIB_NAME}}*.so to diagnose missing libraries."
-    else
-        echo "Run: ldd ${{LIB_NAME}}*.so to diagnose missing libraries."
-    fi
     exit 1
 fi
 "###,
-        step_num = if emit_wheel { "7" } else { "5" },
-        wheel_msg = if emit_wheel {
-            format!("echo \"Wheel generated in dist/: pip install dist/{}-*.whl\"", name)
-        } else {
-            "".to_string()
-        },
-        local_install_success_message = local_install_success_message,
-    );
-
-    let mut out = start;
-    out.push_str(&wheel_steps);
-    out.push_str(&footer);
-    out
+        name = name,
+        os_detection = os_detection,
+        step_count = step_count,
+        wheel_steps = wheel_steps,
+        wheel_msg = wheel_msg,
+    )
 }
