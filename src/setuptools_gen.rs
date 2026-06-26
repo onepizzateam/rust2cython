@@ -101,6 +101,17 @@ else
 fi"###,
     };
 
+    let rpath_fix_pre_var = if platform == "linux" { 
+        format!("LD_LIBRARY_PATH=\"{}\"", "$SCRIPT_DIR")
+    } else { 
+        "".to_string()
+    };
+    let rpath_fix_post_var = match platform {
+        "macos" => "install_name_tool -add_rpath @loader_path $SO_EXT".to_string(),
+        "linux" => "patchelf --set-rpath \"\$ORIGIN\" $SO_EXT".to_string(),
+        _ => "".to_string(),
+    };
+
     let start = format!(
         r###"#!/bin/sh
 set -e
@@ -131,28 +142,29 @@ SO_SRC="$CRATE_ROOT/target/release/$SO_NAME"
 
     if [ ! -f "$SCRIPT_DIR/{name}.h" ]; then
         echo "ERROR: {name}.h not found in $SCRIPT_DIR"
-        echo "Rerun: rust2cython src/lib.rs -o <output_dir>/ -n {name}"
-        exit 1
+echo "Rerun: rust2cython src/lib.rs -o <output_dir>/ -n {name}"
+exit 1
     fi
 
     echo "[3/5] Installing Python dependencies..."
     cd "$SCRIPT_DIR"
     pip3 install -r requirements.txt
 
+    # These variables are only set if the respective tools are found
     RPATH_FIX_PRE_VAR=""
     RPATH_FIX_POST_VAR=""
     if [ "$OS_NAME" = "Darwin" ]; then
-        if ! command -v install_name_tool >/dev/null 2>&1; then
+        if command -v install_name_tool >/dev/null 2>&1; then
+            RPATH_FIX_POST_VAR="{rpath_fix_post_var}"
+        else
             echo "WARNING: install_name_tool not found. Dynamic library may not be portable. Install with: brew install cctools"
-        else
-            RPATH_FIX_POST_VAR="install_name_tool -add_rpath @loader_path $SO_EXT"
         fi
-    else
-        if ! command -v patchelf >/dev/null 2>&1; then
-            echo "WARNING: patchelf not found. Dynamic library may not be portable. Install with: sudo apt install patchelf"
+    elif [ "$OS_NAME" = "Linux" ]; then
+        if command -v patchelf >/dev/null 2>&1; then
+            RPATH_FIX_PRE_VAR="{rpath_fix_pre_var}"
+            RPATH_FIX_POST_VAR="{rpath_fix_post_var}"
         else
-            RPATH_FIX_PRE_VAR="LD_LIBRARY_PATH=\"$SCRIPT_DIR\""
-            RPATH_FIX_POST_VAR="patchelf --set-rpath \"\$ORIGIN\" $SO_EXT"
+            echo "WARNING: patchelf not found. Dynamic library may not be portable. Install with: sudo apt install patchelf"
         fi
     fi
 
@@ -175,7 +187,9 @@ SO_SRC="$CRATE_ROOT/target/release/$SO_NAME"
         eval "${RPATH_FIX_POST_VAR}"
     fi
 "###,
-        name = name
+        name = name,
+        rpath_fix_pre_var = rpath_fix_pre_var,
+        rpath_fix_post_var = rpath_fix_post_var,
     );
 
     let wheel_steps = if emit_wheel {
