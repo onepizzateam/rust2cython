@@ -104,7 +104,11 @@ pub fn generate_pxd(module: &crate::ir::Module, lib_name: &str) -> String {
             match &p.ty {
                 TypeRef::Str => params.push(format!("const char* {}", p.name)),
                 TypeRef::Option(inner) => {
-                    params.push(format!("const {}* {}", to_cython_type(inner), p.name))
+                    if **inner == TypeRef::Str {
+                        params.push(format!("const char* {}", p.name))
+                    } else {
+                        params.push(format!("const {}* {}", to_cython_type(inner), p.name))
+                    }
                 }
                 TypeRef::Vec(inner) => {
                     if **inner == TypeRef::Str {

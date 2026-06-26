@@ -64,6 +64,9 @@ pub fn generate_pyx(module: &crate::ir::Module, name: &str) -> String {
                     TypeRef::Primitive(_) => {
                         params.push(format!("const {}* {}", to_cython_type(inner), p.name))
                     }
+                    TypeRef::Str => {
+                        params.push(format!("const char* {}", p.name))
+                    }
                     _ => {
                         unknown_named = Some(p.name.clone());
                     }
@@ -100,7 +103,13 @@ pub fn generate_pyx(module: &crate::ir::Module, name: &str) -> String {
         let mut extra = Vec::new();
         let ret = match &fn_def.ret {
             TypeRef::Str => "const char*".to_string(),
-            TypeRef::Option(inner) => format!("const {}*", to_cython_type(inner)),
+            TypeRef::Option(inner) => {
+                if **inner == TypeRef::Str {
+                    "const char*".to_string()
+                } else {
+                    format!("const {}*", to_cython_type(inner))
+                }
+            }
             TypeRef::Vec(inner) => {
                 if **inner == TypeRef::Str {
                     extra.push("size_t* out_len".to_string());
@@ -213,11 +222,12 @@ pub fn generate_pyx(module: &crate::ir::Module, name: &str) -> String {
                     call_args.push(format!("_{}_c", p.name));
                 }
                 TypeRef::Str => {
+                    // if it is Option<String>, it can be None
                     pre.push(format!(
-                        "    cdef bytes _{}_b = {}.encode('utf-8')",
-                        p.name, p.name
+                        "    cdef bytes _{0}_b = {0}.encode('utf-8') if {0} is not None else None",
+                        p.name
                     ));
-                    call_args.push(format!("_{}_b", p.name));
+                    call_args.push(format!("_{0}_b if {0} is not None else NULL", p.name));
                 }
                 TypeRef::Vec(inner) => {
                     if **inner == TypeRef::Str {
@@ -352,6 +362,11 @@ pub fn generate_pyx(module: &crate::ir::Module, name: &str) -> String {
                     out.push_str(&format!("    cdef const C{0}* _result = c_{1}({2})\n", s, fn_def.name, call_args.join(", ")));
                     out.push_str(&cleanup);
                     out.push_str(&format!("    if _result is NULL:\n        return None\n    out = {0}.__new__({0})\n    out._c = _result[0]\n    return out\n\n", s));
+                }
+                TypeRef::Str => {
+                    out.push_str(&format!("    cdef const char* _result = c_{0}({1})\n", fn_def.name, call_args.join(", ")));
+                    out.push_str(&cleanup);
+                    out.push_str("    return None if _result is NULL else _result.decode(\'utf-8\')\n\n");
                 }
                 _ => {
                     out.push_str(&format!("    cdef const {0}* _result = c_{1}({2})\n", to_cython_type(&**inner), fn_def.name, call_args.join(", ")));

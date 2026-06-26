@@ -266,9 +266,13 @@ pub fn generate_shim(module: &Module) -> String {
                     call_args.push(p.name.clone());
                 }
                 crate::ir::FfiType::CStr => {
-                    // produce owned String
-                    body.push_str(&format!("    let {}_s = unsafe {{ CStr::from_ptr({}).to_str().unwrap().to_owned() }};\n", p.name, p.name));
-                    call_args.push(format!("{}_s", p.name));
+                    if let crate::ir::TypeRef::Str = &p.original_ty {
+                        body.push_str(&format!("    let {0}_s = unsafe {{ CStr::from_ptr({0}).to_str().unwrap().to_owned() }};\n", p.name));
+                        call_args.push(format!("{}_s", p.name));
+                    } else {
+                        body.push_str(&format!("    let {0}_s = if {0}.is_null() {{ None }} else {{ Some(unsafe {{ CStr::from_ptr({0}).to_str().unwrap().to_owned() }}) }};\n", p.name));
+                        call_args.push(format!("{}_s", p.name));
+                    }
                 }
                 crate::ir::FfiType::SlicePtr { inner } => {
                     body.push_str(&format!(
@@ -312,7 +316,11 @@ pub fn generate_shim(module: &Module) -> String {
                     shim.original_name,
                     call_args.join(", ")
                 ));
-                body.push_str("    CString::new(result).unwrap().into_raw()\n");
+                if let crate::ir::TypeRef::Str = &shim.ret {
+                    body.push_str("    CString::new(result).unwrap().into_raw()\n");
+                } else {
+                    body.push_str("    match result { Some(s) => CString::new(s).unwrap().into_raw(), None => std::ptr::null_mut() }\n");
+                }
             }
             crate::ir::FfiType::SliceOut { .. } => {
                 body.push_str(&format!(
