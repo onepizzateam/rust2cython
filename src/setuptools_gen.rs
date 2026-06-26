@@ -157,7 +157,11 @@ SO_SRC="$CRATE_ROOT/target/release/$SO_NAME"
     fi
 
     echo "[4/5] Building Cython extension..."
-    ${RPATH_FIX_PRE_VAR} python3 setup.py build_ext --inplace
+    if [ -n "${RPATH_FIX_PRE_VAR}" ]; then
+        eval "${RPATH_FIX_PRE_VAR}" python3 setup.py build_ext --inplace
+    else
+        python3 setup.py build_ext --inplace
+    fi
 
     SO_EXT=$(find build/ -name "*.so" 2>/dev/null | head -1)
     if [ -z "$SO_EXT" ]; then
@@ -167,7 +171,9 @@ SO_SRC="$CRATE_ROOT/target/release/$SO_NAME"
     fi
     cp "$SO_EXT" "$SCRIPT_DIR/"
 
-    ${RPATH_FIX_POST_VAR}
+    if [ -n "${RPATH_FIX_POST_VAR}" ]; then
+        eval "${RPATH_FIX_POST_VAR}"
+    fi
 "###,
         name = name
     );
