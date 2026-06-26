@@ -46,6 +46,21 @@ struct Args {
     /// Skip injecting the generated shim into the original crate (mod declaration)
     #[arg(long, action = clap::ArgAction::SetTrue)]
     no_inject: bool,
+
+    /// Platform for rpath and library extension: auto, linux, macos (default: auto)
+    #[arg(long, value_name = "PLATFORM", default_value = "auto")]
+    platform: String,
+
+    /// Version of the generated library (default: 0.1.0)
+    #[arg(long, value_name = "VERSION", default_value = "0.1.0")]
+    lib_version: String,
+
+    /// Generate a distributable wheel (default: true)
+    #[arg(long, action = clap::ArgAction::SetTrue, default_value_t = true)]
+    wheel: bool,
+    /// Disable wheel generation
+    #[arg(long, action = clap::ArgAction::SetFalse, overrides_with = "wheel")]
+    no_wheel: bool,
 }
 
 fn main() {
@@ -192,14 +207,21 @@ fn main() {
 
     if !args.no_setup {
         let rs_source = args.input.to_str().unwrap_or("");
-        let (setup_py, pyproject) = setuptools_gen::generate_setup_files(&name, rs_source);
+        let (setup_py, pyproject) = setuptools_gen::generate_setup_files(
+            &name,
+            rs_source,
+            &args.platform,
+            &args.lib_version,
+        );
 
-        let build_sh = setuptools_gen::generate_build_instructions(&name);
+        let build_sh =
+            setuptools_gen::generate_build_instructions(&name, &args.platform, args.wheel);
 
         let setup_path = args.output.join("setup.py");
         let pyproject_path = args.output.join("pyproject.toml");
         let build_path = args.output.join("BUILD.sh");
         let requirements_path = args.output.join("requirements.txt");
+        let requirements_dev_path = args.output.join("requirements-dev.txt");
 
         if let Err(e) = std::fs::write(&setup_path, setup_py) {
             eprintln!("Error: failed to write {}: {}", setup_path.display(), e);
@@ -223,10 +245,22 @@ fn main() {
             );
             std::process::exit(1);
         }
+        // write requirements-dev.txt
+        if let Err(e) = std::fs::write(
+            &requirements_dev_path,
+            setuptools_gen::generate_dev_requirements(),
+        ) {
+            eprintln!(
+                "Error: failed to write {}: {}",
+                requirements_dev_path.display(),
+                e
+            );
+            std::process::exit(1);
+        }
 
         if shim_written {
             println!(
-                "Generated {}.pxd, {}.pyx, {}.h, {}_ffi.rs, setup.py, pyproject.toml, BUILD.sh in {}",
+                "Generated {}.pxd, {}.pyx, {}.h, {}_ffi.rs, setup.py, pyproject.toml, requirements.txt, requirements-dev.txt, BUILD.sh in {}",
                 name,
                 name,
                 name,
@@ -235,7 +269,7 @@ fn main() {
             );
         } else {
             println!(
-                "Generated {}.pxd, {}.pyx, {}.h, setup.py, pyproject.toml, BUILD.sh in {}",
+                "Generated {}.pxd, {}.pyx, {}.h, setup.py, pyproject.toml, requirements.txt, requirements-dev.txt, BUILD.sh in {}",
                 name,
                 name,
                 name,
