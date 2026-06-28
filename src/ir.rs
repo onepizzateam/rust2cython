@@ -1,4 +1,4 @@
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum PrimKind {
     I8,
     I16,
@@ -14,7 +14,7 @@ pub enum PrimKind {
     Usize,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TypeRef {
     Primitive(PrimKind),
     Str,
@@ -98,5 +98,7 @@ pub enum FfiType {
     OptionPtr { inner: TypeRef },
     ResultWithErrOut { ok: TypeRef },
     SliceOut { inner: TypeRef },
+    StringSlicePtr,
+    StringArrayOut,
     Unsupported(String),
 }

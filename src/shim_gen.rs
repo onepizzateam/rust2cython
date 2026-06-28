@@ -66,7 +66,9 @@ pub fn generate_shim(module: &Module) -> String {
             }
             // ffi ty may also indicate cstr
             match &p.ffi_ty {
-                crate::ir::FfiType::CStr => {
+                crate::ir::FfiType::CStr
+                | crate::ir::FfiType::StringSlicePtr
+                | crate::ir::FfiType::StringArrayOut => {
                     need_cstr = true;
                     need_cchar = true;
                 }
@@ -90,7 +92,10 @@ pub fn generate_shim(module: &Module) -> String {
             _ => {}
         }
         match &shim.ffi_ret {
-            crate::ir::FfiType::CStr | crate::ir::FfiType::ResultWithErrOut { .. } => {
+            crate::ir::FfiType::CStr
+            | crate::ir::FfiType::ResultWithErrOut { .. }
+            | crate::ir::FfiType::StringSlicePtr
+            | crate::ir::FfiType::StringArrayOut => {
                 need_cstr = true;
                 need_cchar = true;
             }
@@ -181,6 +186,12 @@ pub fn generate_shim(module: &Module) -> String {
                     let ty = prim_to_rust(inner);
                     sig.push_str(&format!("{}: *const {}", p.name, ty));
                 }
+                crate::ir::FfiType::StringSlicePtr => {
+                    sig.push_str(&format!(
+                        "{}: *const *const c_char, {}_len: usize",
+                        p.name, p.name
+                    ));
+                }
                 crate::ir::FfiType::Unsupported(msg) => {
                     sig.push_str(&format!("/* SKIPPED param {}: {} */", p.name, msg));
                 }
@@ -226,6 +237,15 @@ pub fn generate_shim(module: &Module) -> String {
                 sig.push_str("error_out: *mut *mut c_char");
                 ret_str = ok_ty;
             }
+            crate::ir::FfiType::StringArrayOut => {
+                if !first {
+                    sig.push_str(", ");
+                } else {
+                    first = false;
+                }
+                sig.push_str("out_len: *mut usize");
+                ret_str = "*mut *mut c_char".into();
+            }
             crate::ir::FfiType::Unsupported(msg) => {
                 out.push_str(&format!(
                     "// SKIPPED fn {}: {}\n\n",
@@ -254,9 +274,13 @@ pub fn generate_shim(module: &Module) -> String {
                     call_args.push(p.name.clone());
                 }
                 crate::ir::FfiType::CStr => {
-                    // produce owned String
-                    body.push_str(&format!("    let {}_s = unsafe {{ CStr::from_ptr({}).to_str().unwrap().to_owned() }};\n", p.name, p.name));
-                    call_args.push(format!("{}_s", p.name));
+                    if let crate::ir::TypeRef::Str = &p.original_ty {
+                        body.push_str(&format!("    let {0}_s = unsafe {{ CStr::from_ptr({0}).to_str().unwrap().to_owned() }};\n", p.name));
+                        call_args.push(format!("{}_s", p.name));
+                    } else {
+                        body.push_str(&format!("    let {0}_s = if {0}.is_null() {{ None }} else {{ Some(unsafe {{ CStr::from_ptr({0}).to_str().unwrap().to_owned() }}) }};\n", p.name));
+                        call_args.push(format!("{}_s", p.name));
+                    }
                 }
                 crate::ir::FfiType::SlicePtr { inner } => {
                     body.push_str(&format!(
@@ -269,6 +293,17 @@ pub fn generate_shim(module: &Module) -> String {
                     let ty = prim_to_rust(inner);
                     body.push_str(&format!("    let {}_opt = if {}.is_null() {{ None }} else {{ Some(unsafe {{ *{} }}) }};\n", p.name, p.name, p.name));
                     call_args.push(format!("{}_opt", p.name));
+                }
+                crate::ir::FfiType::StringSlicePtr => {
+                    body.push_str(&format!(
+                        "    let {}_slice = unsafe {{ std::slice::from_raw_parts({}, {}_len) }};\n",
+                        p.name, p.name, p.name
+                    ));
+                    body.push_str(&format!(
+                        "    let {}_vec: Vec<String> = {}_slice.iter().map(|&ptr| unsafe {{ CStr::from_ptr(ptr).to_str().unwrap().to_owned() }}).collect();\n",
+                        p.name, p.name
+                    ));
+                    call_args.push(format!("{}_vec", p.name));
                 }
                 _ => {}
             }
@@ -289,7 +324,11 @@ pub fn generate_shim(module: &Module) -> String {
                     shim.original_name,
                     call_args.join(", ")
                 ));
-                body.push_str("    CString::new(result).unwrap().into_raw()\n");
+                if let crate::ir::TypeRef::Str = &shim.ret {
+                    body.push_str("    CString::new(result).unwrap().into_raw()\n");
+                } else {
+                    body.push_str("    match result { Some(s) => CString::new(s).unwrap().into_raw(), None => std::ptr::null_mut() }\n");
+                }
             }
             crate::ir::FfiType::SliceOut { .. } => {
                 body.push_str(&format!(
@@ -322,6 +361,18 @@ pub fn generate_shim(module: &Module) -> String {
                 body.push_str("        Err(e) => { unsafe { *error_out = CString::new(e.to_string()).unwrap().into_raw(); } Default::default() },\n");
                 body.push_str("    }\n");
             }
+            crate::ir::FfiType::StringArrayOut => {
+                body.push_str(&format!(
+                    "    let v = super::{}({});\n",
+                    shim.original_name,
+                    call_args.join(", ")
+                ));
+                body.push_str("    let mut c_strs: Vec<*mut c_char> = v.into_iter().map(|s| CString::new(s).unwrap().into_raw()).collect();\n");
+                body.push_str("    c_strs.push(std::ptr::null_mut());\n");
+                body.push_str("    let len = c_strs.len() - 1;\n");
+                body.push_str("    unsafe { *out_len = len; }\n");
+                body.push_str("    Box::into_raw(c_strs.into_boxed_slice()) as *mut *mut c_char\n");
+            }
             _ => {
                 // handled above
             }
@@ -338,6 +389,21 @@ pub fn generate_shim(module: &Module) -> String {
             "#[no_mangle]\npub extern \"C\" fn rust2cython_free_string(ptr: *mut c_char) {\n",
         );
         out.push_str("    if !ptr.is_null() { unsafe { drop(CString::from_raw(ptr)); } }\n");
+        out.push_str("}\n\n");
+
+        out.push_str(
+            "#[no_mangle]\npub unsafe extern \"C\" fn rust2cython_free_string_array(ptr: *mut *mut c_char, len: usize) {\n",
+        );
+        out.push_str("    if !ptr.is_null() {\n");
+        out.push_str(
+            "        let slice = Box::from_raw(std::slice::from_raw_parts_mut(ptr, len + 1));\n",
+        );
+        out.push_str("        for &item in slice.iter() {\n");
+        out.push_str("            if !item.is_null() {\n");
+        out.push_str("                drop(CString::from_raw(item));\n");
+        out.push_str("            }\n");
+        out.push_str("        }\n");
+        out.push_str("    }\n");
         out.push_str("}\n");
     }
 

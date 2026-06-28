@@ -10,6 +10,7 @@ pub fn plan_shim(fn_def: &FnDef) -> ShimFn {
                 let inner_ty = *inner.clone();
                 match inner_ty {
                     TypeRef::Primitive(_) => FfiType::SlicePtr { inner: inner_ty },
+                    TypeRef::Str => FfiType::StringSlicePtr,
                     _ => FfiType::Unsupported("Vec<non-primitive> not supported".into()),
                 }
             }
@@ -17,6 +18,7 @@ pub fn plan_shim(fn_def: &FnDef) -> ShimFn {
                 let inner_ty = *inner.clone();
                 match inner_ty {
                     TypeRef::Primitive(_) => FfiType::OptionPtr { inner: inner_ty },
+                    TypeRef::Str => FfiType::CStr,
                     _ => FfiType::Unsupported("Option<non-primitive> not supported".into()),
                 }
             }
@@ -36,6 +38,7 @@ pub fn plan_shim(fn_def: &FnDef) -> ShimFn {
                 let inner_ty = *inner.clone();
                 match inner_ty {
                     TypeRef::Primitive(_) => FfiType::SliceOut { inner: inner_ty },
+                    TypeRef::Str => FfiType::StringArrayOut,
                     _ => FfiType::Unsupported("Vec<non-primitive> not supported".into()),
                 }
             }
@@ -43,6 +46,7 @@ pub fn plan_shim(fn_def: &FnDef) -> ShimFn {
                 let inner_ty = *inner.clone();
                 match inner_ty {
                     TypeRef::Primitive(_) => FfiType::OptionPtr { inner: inner_ty },
+                    TypeRef::Str => FfiType::CStr,
                     _ => FfiType::Unsupported("Option<non-primitive> not supported".into()),
                 }
             }

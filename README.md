@@ -9,7 +9,6 @@ cd bindings && sh BUILD.sh
 # → Rust crate compiled
 # → Cython extension built
 # → import verified
-LD_LIBRARY_PATH="$PWD/bindings" PYTHONPATH="$PWD/bindings" python3 your_script.py
 ```
 
 ---
@@ -23,11 +22,10 @@ You write idiomatic Rust. `rust2cython` generates:
 - `mylib.h` — C header matching the exported symbols
 - `src/mylib_ffi.rs` — Rust FFI shim (injected into your crate automatically)
 - `setup.py` + `pyproject.toml` — builds the Cython extension
-- `BUILD.sh` — runs cargo build, compiles Cython, verifies the import
+- `requirements.txt` + `requirements-dev.txt` — Python dependencies
+- `BUILD.sh` — runs cargo build, compiles Cython, builds & repairs the wheel, verifies the import
 
 You never write `#[no_mangle]`, `extern "C"`, or `.pxd` files by hand.
-
-**What it does not do (yet):** generate a wheel or make your library `pip install`-able. That's v0.2. Right now it gives you a working local build you can import from Python with two env vars set.
 
 ---
 
@@ -102,7 +100,7 @@ sh BUILD.sh
 | Platform | Status |
 |----------|--------|
 | Linux | ✅ works |
-| macOS | ⚠️ swap `.so` → `.dylib` in `BUILD.sh` manually |
+| macOS | ✅ works |
 | Windows | ❌ not supported yet |
 
 ---
@@ -122,7 +120,6 @@ cargo build --release
 # binary at target/release/rust2cython
 ```
 
-No crates.io release yet — install from source for now.
 
 ---
 
@@ -144,6 +141,10 @@ Options:
   -o, --output <DIR>      Output directory [default: current dir]
   -n, --name <NAME>       Library name [default: input filename stem]
   --format <FORMAT>       Input format: auto, rust, c [default: auto]
+  --platform <PLATFORM>   Target platform: auto, linux, macos [default: auto]
+  --lib-version <VERSION> Version of the generated library [default: 0.1.0]
+  --wheel                 Generate a distributable wheel [default: true]
+  --no-wheel              Disable wheel generation
   --no-setup              Only generate .pxd and .pyx, skip setup files
   --no-inject             Skip patching lib.rs and writing the FFI shim
   --emit-buildrs          Print a build.rs snippet to stdout
@@ -158,12 +159,21 @@ rust2cython src/lib.rs -o bindings/ -n mylib
 # 2. activate your venv (needed on Debian/Ubuntu)
 source ~/.venv/bin/activate
 
-# 3. build
+# 3. build (generates a wheel in bindings/dist/ if --wheel is not --no-wheel)
 sh bindings/BUILD.sh
 
-# 4. run
-LD_LIBRARY_PATH="$PWD/bindings" PYTHONPATH="$PWD/bindings" python3 your_script.py
+# 4. run (if you did NOT install the wheel, otherwise just `python3 your_script.py`)
+# python3 your_script.py
 ```
+
+### wheel generation
+
+By default, `rust2cython` generates a `BUILD.sh` that produces a distributable wheel in the `dist/` directory.
+
+- **On Linux**: It uses `auditwheel` to bundle the Rust shared library into the wheel and fix `rpath`.
+- **On macOS**: It uses `delocate-wheel` to bundle the `.dylib`.
+
+If these tools are missing, `BUILD.sh` will still produce a wheel, but it might not be portable to other machines. Install them via `pip install -r requirements-dev.txt`.
 
 ### from a C header
 
@@ -181,7 +191,8 @@ rust2cython mylib.h -o bindings/ -n mylib
 | `i8` `i16` `i32` `i64` `u8` `u16` `u32` `u64` `f32` `f64` `bool` `usize` | native numeric types |
 | `&str`, `String` | `str` (encode/decode handled automatically) |
 | `Vec<f64>`, `Vec<i32>` etc. | `numpy` array via memoryview |
-| `Option<T>` where T is primitive | `None` or value |
+| `Vec<String>` | `list[str]` (converted to/from C array) |
+| `Option<T>` where T is primitive or `String` | `None` or value |
 | `Result<T, String>` where T is primitive | return value or `RuntimeError` |
 | `pub struct Foo` with primitive fields | `cdef class Foo` with typed constructor |
 
@@ -191,13 +202,10 @@ Unsupported types are skipped and reported on stderr — you always know exactly
 
 ## current limitations
 
-- `Vec<T>` supports numeric primitives only — `Vec<String>` and `Vec<Struct>` are skipped with a warning
-- `Option<String>` not supported
+- `Vec<T>` supports numeric primitives and `String` — `Vec<Struct>` is skipped with a warning
 - Nested generics (`Option<Vec<f64>>`) skipped with a warning
 - Enums with data not supported — C-style enums only
-- Linux only
-- No wheel generation — the output is a local build, not a distributable package
-- String-returning functions use `CString::into_raw()` in the generated shim — memory must be freed manually via the generated `rust2cython_free_string` helper
+- Windows not supported yet
 
 ---
 
@@ -210,15 +218,12 @@ Both examples include the full generated output so you can see exactly what the 
 
 ---
 
-## v0.2 scope
+## v0.3 scope
 
-The main goal for v0.2 is making the output actually distributable:
-
-- **Wheel generation** — `BUILD.sh` produces a `.whl` file you can `pip install` anywhere
-- **macOS support** — `.dylib` handling and correct `rpath` for macOS
 - **Auto-freeing string wrappers** — no manual memory management for string returns
-- **`Vec<String>` support**
-- **`PYTHONPATH`/`LD_LIBRARY_PATH` baked in** — no env vars needed at runtime
+- **Windows support**
+- **Nested generics** (`Option<Vec<f64>>`)
+- **Enums with data**
 
 PRs and issues welcome. If you have a real Rust library this doesn't handle correctly, open an issue with the `.rs` file attached — that's the most useful contribution right now.
 
