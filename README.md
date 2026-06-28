@@ -9,7 +9,6 @@ cd bindings && sh BUILD.sh
 # → Rust crate compiled
 # → Cython extension built
 # → import verified
-LD_LIBRARY_PATH="$PWD/bindings" PYTHONPATH="$PWD/bindings" python3 your_script.py
 ```
 
 ---
@@ -121,7 +120,6 @@ cargo build --release
 # binary at target/release/rust2cython
 ```
 
-No crates.io release yet — install from source for now.
 
 ---
 
@@ -165,8 +163,7 @@ source ~/.venv/bin/activate
 sh bindings/BUILD.sh
 
 # 4. run (if you did NOT install the wheel, otherwise just `python3 your_script.py`)
-# LD_LIBRARY_PATH="$PWD/bindings" PYTHONPATH="$PWD/bindings" python3 your_script.py
-python3 your_script.py
+# python3 your_script.py
 ```
 
 ### wheel generation
@@ -221,11 +218,12 @@ Both examples include the full generated output so you can see exactly what the 
 
 ---
 
-## v0.2 scope
-
-The main goal for v0.2 is making the output actually distributable:
+## v0.3 scope
 
 - **Auto-freeing string wrappers** — no manual memory management for string returns
+- **Windows support**
+- **Nested generics** (`Option<Vec<f64>>`)
+- **Enums with data**
 
 PRs and issues welcome. If you have a real Rust library this doesn't handle correctly, open an issue with the `.rs` file attached — that's the most useful contribution right now.
 
