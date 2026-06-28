@@ -14,8 +14,7 @@ pub enum PrimKind {
     Usize,
 }
 
-#[derive(Debug, Clone)]
-#[derive(PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TypeRef {
     Primitive(PrimKind),
     Str,

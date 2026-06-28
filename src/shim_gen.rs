@@ -66,7 +66,9 @@ pub fn generate_shim(module: &Module) -> String {
             }
             // ffi ty may also indicate cstr
             match &p.ffi_ty {
-                crate::ir::FfiType::CStr | crate::ir::FfiType::StringSlicePtr | crate::ir::FfiType::StringArrayOut => {
+                crate::ir::FfiType::CStr
+                | crate::ir::FfiType::StringSlicePtr
+                | crate::ir::FfiType::StringArrayOut => {
                     need_cstr = true;
                     need_cchar = true;
                 }
@@ -90,7 +92,10 @@ pub fn generate_shim(module: &Module) -> String {
             _ => {}
         }
         match &shim.ffi_ret {
-            crate::ir::FfiType::CStr | crate::ir::FfiType::ResultWithErrOut { .. } | crate::ir::FfiType::StringSlicePtr | crate::ir::FfiType::StringArrayOut => {
+            crate::ir::FfiType::CStr
+            | crate::ir::FfiType::ResultWithErrOut { .. }
+            | crate::ir::FfiType::StringSlicePtr
+            | crate::ir::FfiType::StringArrayOut => {
                 need_cstr = true;
                 need_cchar = true;
             }
@@ -182,7 +187,10 @@ pub fn generate_shim(module: &Module) -> String {
                     sig.push_str(&format!("{}: *const {}", p.name, ty));
                 }
                 crate::ir::FfiType::StringSlicePtr => {
-                    sig.push_str(&format!("{}: *const *const c_char, {}_len: usize", p.name, p.name));
+                    sig.push_str(&format!(
+                        "{}: *const *const c_char, {}_len: usize",
+                        p.name, p.name
+                    ));
                 }
                 crate::ir::FfiType::Unsupported(msg) => {
                     sig.push_str(&format!("/* SKIPPED param {}: {} */", p.name, msg));
@@ -387,7 +395,9 @@ pub fn generate_shim(module: &Module) -> String {
             "#[no_mangle]\npub unsafe extern \"C\" fn rust2cython_free_string_array(ptr: *mut *mut c_char, len: usize) {\n",
         );
         out.push_str("    if !ptr.is_null() {\n");
-        out.push_str("        let slice = Box::from_raw(std::slice::from_raw_parts_mut(ptr, len + 1));\n");
+        out.push_str(
+            "        let slice = Box::from_raw(std::slice::from_raw_parts_mut(ptr, len + 1));\n",
+        );
         out.push_str("        for &item in slice.iter() {\n");
         out.push_str("            if !item.is_null() {\n");
         out.push_str("                drop(CString::from_raw(item));\n");

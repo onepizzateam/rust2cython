@@ -112,10 +112,7 @@ pub fn generate_pxd(module: &crate::ir::Module, lib_name: &str) -> String {
                 }
                 TypeRef::Vec(inner) => {
                     if **inner == TypeRef::Str {
-                        params.push(format!(
-                            "const char** {}, size_t {}_len",
-                            p.name, p.name
-                        ));
+                        params.push(format!("const char** {}, size_t {}_len", p.name, p.name));
                     } else {
                         let inner_ct = to_cython_type(inner);
                         params.push(format!(

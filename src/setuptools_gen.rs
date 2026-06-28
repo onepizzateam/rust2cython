@@ -115,7 +115,10 @@ fi
     };
 
     let wheel_msg = if emit_wheel {
-        format!("echo \"Wheel generated in dist/: pip install dist/{}-*.whl\"", name)
+        format!(
+            "echo \"Wheel generated in dist/: pip install dist/{}-*.whl\"",
+            name
+        )
     } else {
         "".to_string()
     };
