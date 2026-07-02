@@ -27,11 +27,5 @@ jobs:
         run: cargo clippy
       - name: build
         run: cargo build --release
-      - name: Generate test snapshots
-        run: |
-          cargo run -- tests/fixtures/simple.rs  -o tests/snapshots -n simple
-          cargo run -- tests/fixtures/strings.rs -o tests/snapshots -n strings
-          cargo run -- tests/fixtures/structs.rs -o tests/snapshots -n structs
-          cargo run -- tests/fixtures/complex.rs -o tests/snapshots -n complex
       - name: test
         run: cargo test

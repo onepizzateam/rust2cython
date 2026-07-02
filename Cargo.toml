@@ -19,3 +19,6 @@ name = "rust2cython"
 anyhow = "1"
 syn = { version = "2", features = ["full"] }
 clap = { version = "4", features = ["derive"] }
+
+[dev-dependencies]
+insta = "1"
