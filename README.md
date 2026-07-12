@@ -214,7 +214,7 @@ Unsupported types are skipped and reported on stderr — you always know exactly
 Both examples include the full generated output so you can see exactly what the tool produces before running it.
 
 - [`examples/linear_algebra/`](examples/linear_algebra/) — dot product, norm, scale, matrix determinant
-- [`examples/bio_sequence/`](examples/bio_sequence/) — GC content, reverse complement, motif search
+- [`examples/bio_sequence/`](examples/bio_sequence/) — GC content, reverse complement
 
 ---
 
