@@ -1,3 +1,4 @@
+// Run with INSTA_UPDATE=new to regenerate snapshots after fixture changes
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -23,7 +24,7 @@ fn rust_fixtures_generate_snapshots() {
             .unwrap_or_else(|e| panic!("failed to parse {}: {e}", fixture.display()));
 
         let pxd = rust2cython::pxd_gen::generate_pxd(&module, &stem);
-        let pyx = rust2cython::pyx_gen::generate_pyx(&module, &stem);
+        let pyx = rust2cython::pyx_gen::generate_pyx(&module, &stem, false);
         let header = rust2cython::header_gen::generate_header(&module, &stem);
 
         insta::assert_snapshot!(format!("{}_pxd", stem), pxd);
