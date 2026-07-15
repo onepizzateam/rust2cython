@@ -8,6 +8,7 @@ mod setuptools_gen;
 mod shim_gen;
 mod shim_planner;
 mod syn_parser;
+mod crate_parser;
 mod translator;
 
 use clap::Parser;
@@ -47,6 +48,18 @@ struct Args {
     #[arg(long, action = clap::ArgAction::SetTrue)]
     no_inject: bool,
 
+    /// Path to a Cargo.toml to operate on the whole crate (shallow module traversal)
+    #[arg(long, value_name = "CARGO_TOML")]
+    crate_path: Option<PathBuf>,
+
+    /// Emit typed Python annotations in generated .pyx
+    #[arg(long, action = clap::ArgAction::SetTrue)]
+    typed: bool,
+
+    /// Dry run: print generated files to stdout instead of writing
+    #[arg(long, action = clap::ArgAction::SetTrue)]
+    dry_run: bool,
+
     /// Platform for rpath and library extension: auto, linux, macos (default: auto)
     #[arg(long, value_name = "PLATFORM", default_value = "auto")]
     platform: String,
@@ -84,22 +97,50 @@ fn main() {
         std::process::exit(1);
     };
 
-    let module = match detected.as_str() {
-        "rust" => match syn_parser::parse_rust_file(&args.input) {
-            Ok(m) => m,
+    // If crate_path is provided, do a shallow crate parse and merge modules
+    let module = if let Some(cargo_toml) = &args.crate_path {
+        match crate_parser::find_lib_rs(cargo_toml) {
+            Ok(lib_rs) => match crate_parser::collect_module_files(&lib_rs) {
+                Ok(files) => {
+                    let mut modules = Vec::new();
+                    for f in files {
+                        match syn_parser::parse_rust_file(&f) {
+                            Ok(m) => modules.push(m),
+                            Err(e) => {
+                                eprintln!("Error parsing {}: {}", f.display(), e);
+                            }
+                        }
+                    }
+                    crate::ir::Module::merge_modules(modules)
+                }
+                Err(e) => {
+                    eprintln!("Error: {}", e);
+                    std::process::exit(1);
+                }
+            },
             Err(e) => {
                 eprintln!("Error: {}", e);
                 std::process::exit(1);
             }
-        },
-        "c" => match header_parser::parse_c_header(&args.input) {
-            Ok(m) => m,
-            Err(e) => {
-                eprintln!("Error: {}", e);
-                std::process::exit(1);
-            }
-        },
-        _ => unreachable!(),
+        }
+    } else {
+        match detected.as_str() {
+            "rust" => match syn_parser::parse_rust_file(&args.input) {
+                Ok(m) => m,
+                Err(e) => {
+                    eprintln!("Error: {}", e);
+                    std::process::exit(1);
+                }
+            },
+            "c" => match header_parser::parse_c_header(&args.input) {
+                Ok(m) => m,
+                Err(e) => {
+                    eprintln!("Error: {}", e);
+                    std::process::exit(1);
+                }
+            },
+            _ => unreachable!(),
+        }
     };
 
     let name = args.name.clone().unwrap_or_else(|| {
@@ -132,28 +173,60 @@ fn main() {
     }
 
     let pxd = pxd_gen::generate_pxd(&module, &name);
-    let pyx = pyx_gen::generate_pyx(&module, &name);
+    let pyx = pyx_gen::generate_pyx(&module, &name, args.typed);
     let header_content = header_gen::generate_header(&module, &name);
+
+    // Generate shim and setup content strings so we can either write them or print them in --dry-run
+    let shim_content = if !args.no_shim {
+        shim_gen::generate_shim(&module)
+    } else {
+        String::new()
+    };
+
+    let (setup_py, pyproject, build_sh, requirements_txt, requirements_dev_txt) = if !args.no_setup {
+        let (s, p) = setuptools_gen::generate_setup_files(&name, args.input.to_str(), &args.platform, &args.lib_version);
+        let b = setuptools_gen::generate_build_instructions(&name, &args.platform, args.wheel);
+        let req = setuptools_gen::generate_requirements();
+        let req_dev = setuptools_gen::generate_dev_requirements();
+        (s, p, b, req, req_dev)
+    } else {
+        (String::new(), String::new(), String::new(), String::new(), String::new())
+    };
 
     let pxd_path = args.output.join(format!("{}.pxd", name));
     let pyx_path = args.output.join(format!("{}.pyx", name));
-
-    if let Err(e) = std::fs::write(&pxd_path, pxd) {
-        eprintln!("Error: failed to write {}: {}", pxd_path.display(), e);
-        std::process::exit(1);
-    }
-    if let Err(e) = std::fs::write(&pyx_path, pyx) {
-        eprintln!("Error: failed to write {}: {}", pyx_path.display(), e);
-        std::process::exit(1);
-    }
-    let header_path = args.output.join(format!("{}.h", name));
-    if let Err(e) = std::fs::write(&header_path, header_content) {
-        eprintln!("Error: failed to write {}: {}", header_path.display(), e);
-        std::process::exit(1);
+    if args.dry_run {
+        println!("=== {}.pxd ===\n{}", name, pxd);
+        println!("=== {}.pyx ===\n{}", name, pyx);
+        println!("=== {}.h ===\n{}", name, header_content);
+        if !shim_content.is_empty() {
+            println!("=== {}_ffi.rs ===\n{}", name, shim_content);
+        }
+        if !setup_py.is_empty() || !pyproject.is_empty() {
+            println!("=== setup.py ===\n{}", setup_py);
+            println!("=== pyproject.toml ===\n{}", pyproject);
+            println!("=== BUILD.sh ===\n{}", build_sh);
+            println!("=== requirements.txt ===\n{}", requirements_txt);
+            println!("=== requirements-dev.txt ===\n{}", requirements_dev_txt);
+        }
+    } else {
+        if let Err(e) = std::fs::write(&pxd_path, pxd) {
+            eprintln!("Error: failed to write {}: {}", pxd_path.display(), e);
+            std::process::exit(1);
+        }
+        if let Err(e) = std::fs::write(&pyx_path, pyx) {
+            eprintln!("Error: failed to write {}: {}", pyx_path.display(), e);
+            std::process::exit(1);
+        }
+        let header_path = args.output.join(format!("{}.h", name));
+        if let Err(e) = std::fs::write(&header_path, header_content) {
+            eprintln!("Error: failed to write {}: {}", header_path.display(), e);
+            std::process::exit(1);
+        }
     }
 
     let mut shim_written = false;
-    if !args.no_shim {
+    if !args.no_shim && !args.dry_run {
         // derive src_dir from input file
         let src_dir = args.input.parent().unwrap_or(std::path::Path::new("."));
 
@@ -167,7 +240,9 @@ fn main() {
         shim_written = true;
 
         // patch lib.rs — insert mod declaration before first pub fn
-        if args.no_inject {
+        if args.dry_run {
+            println!("--dry-run set, skipping shim injection into {}", args.input.display());
+        } else if args.no_inject {
             println!("--no-inject set, skipping shim injection");
         } else {
             let lib_rs_content = match std::fs::read_to_string(&args.input) {
@@ -205,7 +280,7 @@ fn main() {
         }
     }
 
-    if !args.no_setup {
+    if !args.no_setup && !args.dry_run {
         let rs_source = args.input.to_str().unwrap_or("");
         let (setup_py, pyproject) = setuptools_gen::generate_setup_files(
             &name,
