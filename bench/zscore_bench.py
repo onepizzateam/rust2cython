@@ -1,10 +1,3 @@
-import timeit
-import numpy as np
-
-def zscore_numpy(a):
-    m = a.mean()
-    s = a.std()
-    return (a - m) / s
 """
 zscore benchmark: pure Python vs NumPy vs rust2cython vs PyO3 vs hand-written Cython.
 
@@ -60,30 +53,24 @@ except ImportError:
 
 try:
     import rust_zscore
-    import numpy as _np
-    rc_arr = _np.array(data)
-    rust2cython_time = bench("rust2cython (generated)", lambda a: rust_zscore.zscore(a), rc_arr)
-    print(f"  -> {baseline/rust2cython_time:.1f}x faster than pure Python")
+    rc_arr = arr if 'np' in globals() else None
+    if rc_arr is not None:
+        rust2cython_time = bench("rust2cython (generated)", lambda a: rust_zscore.zscore(a), rc_arr)
+        print(f"  -> {baseline/rust2cython_time:.1f}x faster than pure Python")
+    else:
+        print("NumPy not available — skipping rust2cython comparison")
 except ImportError:
     print("rust2cython binding not built — see prerequisites above")
 
 try:
     import pyo3_zscore
-    import numpy as _np2
-    pyo3_arr = _np2.array(data)
-    pyo3_time = bench("PyO3 / maturin", lambda a: pyo3_zscore.zscore(a), pyo3_arr)
-    print(f"  -> {baseline/pyo3_time:.1f}x faster than pure Python")
+    pyo3_arr = arr if 'np' in globals() else None
+    if pyo3_arr is not None:
+        pyo3_time = bench("PyO3 / maturin", lambda a: pyo3_zscore.zscore(a), pyo3_arr)
+        print(f"  -> {baseline/pyo3_time:.1f}x faster than pure Python")
+    else:
+        print("NumPy not available — skipping PyO3 comparison")
 except ImportError:
     print("PyO3 binding not built — see prerequisites above")
 
 print("\nFill in README.md ## performance table with the numbers above.")
-
-print("Running benchmark on {} elements, {} iterations".format(N, max(1, ITER)))
-
-py_time = timeit.timeit(lambda: zscore_py(arr), number=10)
-print(f"Pure Python (list)  : {py_time:.6f} sec (10 runs)")
-
-np_time = timeit.timeit(lambda: zscore_numpy(arr), number=10)
-print(f"NumPy (vectorized) : {np_time:.6f} sec (10 runs)")
-
-print("\nFor rust2cython / PyO3 / Cython results: build the corresponding modules per the examples/ directory and import them here. This script currently measures pure Python and NumPy only.")
