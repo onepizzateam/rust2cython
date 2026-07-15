@@ -103,8 +103,8 @@ fn main() {
             Ok(lib_rs) => match crate_parser::collect_module_files(&lib_rs) {
                 Ok(files) => {
                     let mut modules = Vec::new();
-                    for f in files {
-                        match syn_parser::parse_rust_file(&f) {
+                    for f in &files {
+                        match syn_parser::parse_rust_file(f) {
                             Ok(m) => modules.push(m),
                             Err(e) => {
                                 eprintln!("Error parsing {}: {}", f.display(), e);
@@ -184,7 +184,8 @@ fn main() {
     };
 
     let (setup_py, pyproject, build_sh, requirements_txt, requirements_dev_txt) = if !args.no_setup {
-        let (s, p) = setuptools_gen::generate_setup_files(&name, args.input.to_str(), &args.platform, &args.lib_version);
+        let input_str = args.input.to_str().expect("input path is not valid UTF-8");
+        let (s, p) = setuptools_gen::generate_setup_files(&name, input_str, &args.platform, &args.lib_version);
         let b = setuptools_gen::generate_build_instructions(&name, &args.platform, args.wheel);
         let req = setuptools_gen::generate_requirements();
         let req_dev = setuptools_gen::generate_dev_requirements();

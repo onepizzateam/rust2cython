@@ -74,6 +74,25 @@ pub struct Module {
     pub enums: Vec<EnumDef>,
 }
 
+impl Module {
+    /// Merge multiple modules into one by concatenating their vectors.
+    pub fn merge_modules(mods: Vec<Module>) -> Module {
+        let mut functions = Vec::new();
+        let mut structs = Vec::new();
+        let mut enums = Vec::new();
+        for m in mods {
+            functions.extend(m.functions);
+            structs.extend(m.structs);
+            enums.extend(m.enums);
+        }
+        Module {
+            functions,
+            structs,
+            enums,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ShimParam {
     pub name: String,
