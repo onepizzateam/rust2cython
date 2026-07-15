@@ -173,7 +173,7 @@ fn main() {
     }
 
     let pxd = pxd_gen::generate_pxd(&module, &name);
-    let pyx = pyx_gen::generate_pyx(&module, &name, args.typed);
+    let pyx = pyx_gen::generate_pyx(&module, &name);
     let header_content = header_gen::generate_header(&module, &name);
 
     // Generate shim and setup content strings so we can either write them or print them in --dry-run

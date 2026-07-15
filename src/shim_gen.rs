@@ -131,23 +131,23 @@ pub fn generate_shim(module: &Module) -> String {
         // check for unsupported in params
         let mut skip_due_to_param = None;
         for p in &shim.params {
-            if let crate::ir::FfiType::Unsupported(msg) = &p.ffi_ty {
+                if let crate::ir::FfiType::Unsupported(_msg) = &p.ffi_ty {
                 // print warning to stderr
-                eprintln!("WARNING: skipping fn '{}' — {}", shim.original_name, msg);
+                eprintln!("WARNING: skipping fn '{}' — {}", shim.original_name, _msg);
                 // emit explanatory SKIPPED comment in shim file
                 out.push_str(&format!(
                     "// SKIPPED: fn {}\n// Reason: {}\n// Unsupported type — implement this FFI wrapper manually.\n\n",
-                    shim.original_name, msg
+                    shim.original_name, _msg
                 ));
-                skip_due_to_param = Some(msg.clone());
+                skip_due_to_param = Some(_msg.clone());
                 break;
             }
         }
-        if let crate::ir::FfiType::Unsupported(msg) = &shim.ffi_ret {
-            eprintln!("WARNING: skipping fn '{}' — {}", shim.original_name, msg);
+        if let crate::ir::FfiType::Unsupported(_msg) = &shim.ffi_ret {
+            eprintln!("WARNING: skipping fn '{}' — {}", shim.original_name, _msg);
             out.push_str(&format!(
                 "// SKIPPED: fn {}\n// Reason: {}\n// Unsupported type — implement this FFI wrapper manually.\n\n",
-                shim.original_name, msg
+                shim.original_name, _msg
             ));
             continue;
         }
@@ -171,20 +171,20 @@ pub fn generate_shim(module: &Module) -> String {
                 first = false;
             }
             match &p.ffi_ty {
-                crate::ir::FfiType::Direct(orig) => {
-                    let ty = type_for_sig(orig);
-                    sig.push_str(&format!("{}: {}", p.name, ty));
+                crate::ir::FfiType::Direct(_orig) => {
+                    let _ty = type_for_sig(_orig);
+                    sig.push_str(&format!("{}: {}", p.name, _ty));
                 }
                 crate::ir::FfiType::CStr => {
                     sig.push_str(&format!("{}: *const c_char", p.name));
                 }
-                crate::ir::FfiType::SlicePtr { inner } => {
-                    let ty = prim_to_rust(inner);
-                    sig.push_str(&format!("{}: *const {}, {}_len: usize", p.name, ty, p.name));
+                crate::ir::FfiType::SlicePtr { inner: _inner } => {
+                    let _ty = prim_to_rust(&_inner);
+                    sig.push_str(&format!("{}: *const {}, {}_len: usize", p.name, _ty, p.name));
                 }
-                crate::ir::FfiType::OptionPtr { inner } => {
-                    let ty = prim_to_rust(inner);
-                    sig.push_str(&format!("{}: *const {}", p.name, ty));
+                crate::ir::FfiType::OptionPtr { inner: _inner } => {
+                    let _ty = prim_to_rust(&_inner);
+                    sig.push_str(&format!("{}: *const {}", p.name, _ty));
                 }
                 crate::ir::FfiType::StringSlicePtr => {
                     sig.push_str(&format!(
@@ -192,8 +192,8 @@ pub fn generate_shim(module: &Module) -> String {
                         p.name, p.name
                     ));
                 }
-                crate::ir::FfiType::Unsupported(msg) => {
-                    sig.push_str(&format!("/* SKIPPED param {}: {} */", p.name, msg));
+                crate::ir::FfiType::Unsupported(_msg) => {
+                    sig.push_str(&format!("/* SKIPPED param {}: {} */", p.name, _msg));
                 }
                 _ => {
                     sig.push_str(&format!("/* unhandled param type for {} */", p.name));
@@ -202,54 +202,51 @@ pub fn generate_shim(module: &Module) -> String {
         }
 
         // return and extra params for returns
-        let mut ret_str = String::new();
+        let mut ret_str: String;
         match &shim.ffi_ret {
-            crate::ir::FfiType::Direct(orig) => {
-                let ty = type_for_sig(orig);
-                ret_str = ty;
+            crate::ir::FfiType::Direct(_orig) => {
+                let _ty = type_for_sig(_orig);
+                ret_str = _ty;
             }
             crate::ir::FfiType::CStr => {
                 ret_str = "*const c_char".into();
             }
-            crate::ir::FfiType::SliceOut { inner } => {
-                let ty = prim_to_rust(inner);
+            crate::ir::FfiType::SliceOut { inner: _inner } => {
+                let _ty = prim_to_rust(&_inner);
                 // add out params
                 if !first {
                     sig.push_str(", ");
-                } else {
-                    first = false;
                 }
-                sig.push_str(&format!("out: *mut {}, out_len: usize", ty));
+                first = false;
+                sig.push_str(&format!("out: *mut {}, out_len: usize", _ty));
                 ret_str = "()".into();
             }
-            crate::ir::FfiType::OptionPtr { inner } => {
-                let ty = prim_to_rust(inner);
-                ret_str = format!("*const {}", ty);
+            crate::ir::FfiType::OptionPtr { inner: _inner } => {
+                let _ty = prim_to_rust(&_inner);
+                ret_str = format!("*const {}", _ty);
             }
-            crate::ir::FfiType::ResultWithErrOut { ok } => {
-                let ok_ty = prim_to_rust(ok);
+            crate::ir::FfiType::ResultWithErrOut { ok: _ok } => {
+                let _ok_ty = prim_to_rust(&_ok);
                 // add error_out param
                 if !first {
                     sig.push_str(", ");
-                } else {
-                    first = false;
                 }
+                first = false;
                 sig.push_str("error_out: *mut *mut c_char");
-                ret_str = ok_ty;
+                ret_str = _ok_ty;
             }
             crate::ir::FfiType::StringArrayOut => {
                 if !first {
                     sig.push_str(", ");
-                } else {
-                    first = false;
                 }
+                first = false;
                 sig.push_str("out_len: *mut usize");
                 ret_str = "*mut *mut c_char".into();
             }
-            crate::ir::FfiType::Unsupported(msg) => {
+            crate::ir::FfiType::Unsupported(_msg) => {
                 out.push_str(&format!(
                     "// SKIPPED fn {}: {}\n\n",
-                    shim.original_name, msg
+                    shim.original_name, _msg
                 ));
                 continue;
             }

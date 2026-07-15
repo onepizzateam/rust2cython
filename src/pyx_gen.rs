@@ -21,7 +21,7 @@ fn numpy_dtype_for(ty: &TypeRef) -> Option<&'static str> {
     }
 }
 
-pub fn generate_pyx(module: &crate::ir::Module, name: &str, _typed: bool) -> String {
+pub fn generate_pyx(module: &crate::ir::Module, name: &str) -> String {
     use crate::translator::to_cython_type;
 
     let mut out = String::new();
@@ -267,7 +267,7 @@ pub fn generate_pyx(module: &crate::ir::Module, name: &str, _typed: bool) -> Str
                     pre.push(format!("    if {0} is None:\n        _{0}_ptr = NULL\n    else:\n        _{0}_val = {0}\n        _{0}_ptr = &_{0}_val", p.name));
                     call_args.push(format!("_{0}_ptr", p.name));
                 }
-                other => {
+                _other => {
                     call_args.push(p.name.clone());
                 }
             }
