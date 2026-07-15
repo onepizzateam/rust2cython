@@ -56,8 +56,8 @@ struct Args {
     #[arg(long, action = clap::ArgAction::SetTrue)]
     typed: bool,
 
-    /// Dry run: print generated files to stdout instead of writing
-    #[arg(long, action = clap::ArgAction::SetTrue)]
+    /// Print generated files to stdout instead of writing to disk
+    #[arg(long, help = "Print generated files to stdout instead of writing to disk")]
     dry_run: bool,
 
     /// Platform for rpath and library extension: auto, linux, macos (default: auto)
@@ -240,9 +240,7 @@ fn main() {
         shim_written = true;
 
         // patch lib.rs — insert mod declaration before first pub fn
-        if args.dry_run {
-            println!("--dry-run set, skipping shim injection into {}", args.input.display());
-        } else if args.no_inject {
+        if args.no_inject {
             println!("--no-inject set, skipping shim injection");
         } else {
             let lib_rs_content = match std::fs::read_to_string(&args.input) {
