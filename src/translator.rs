@@ -9,6 +9,7 @@ pub fn to_cython_type(ty: &crate::ir::TypeRef) -> String {
             | PrimKind::U8
             | PrimKind::U16
             | PrimKind::U32
+            | PrimKind::Isize
             | PrimKind::Usize,
         ) => "int".to_string(),
         TypeRef::Primitive(PrimKind::I64 | PrimKind::U64) => "long long".to_string(),
@@ -27,6 +28,7 @@ pub fn to_cython_type(ty: &crate::ir::TypeRef) -> String {
                     | PrimKind::U16
                     | PrimKind::U32
                     | PrimKind::U64
+                    | PrimKind::Isize
                     | PrimKind::Usize
                     | PrimKind::F32
                     | PrimKind::F64,
@@ -46,6 +48,7 @@ pub fn to_cython_type(ty: &crate::ir::TypeRef) -> String {
     }
 }
 
+#[allow(dead_code)]
 pub fn needs_wrapper(ty: &crate::ir::TypeRef) -> bool {
     matches!(
         ty,
@@ -53,6 +56,7 @@ pub fn needs_wrapper(ty: &crate::ir::TypeRef) -> bool {
     )
 }
 
+#[allow(dead_code)]
 pub fn python_return_expr(ty: &crate::ir::TypeRef, raw_expr: &str) -> String {
     match ty {
         TypeRef::Result(_, _) => raw_expr.to_string(),

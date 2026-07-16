@@ -26,6 +26,9 @@ pub fn parse_c_header(path: &std::path::Path) -> anyhow::Result<crate::ir::Modul
         if compact == "int64_t" || compact == "long" {
             return TypeRef::Primitive(PrimKind::I64);
         }
+        if compact == "intptr_t" || compact == "ptrdiff_t" || compact == "long long" {
+            return TypeRef::Primitive(PrimKind::Isize);
+        }
         if compact == "uint32_t" || compact == "unsigned int" {
             return TypeRef::Primitive(PrimKind::U32);
         }

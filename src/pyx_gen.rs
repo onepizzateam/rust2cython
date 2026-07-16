@@ -49,7 +49,7 @@ pub fn generate_pyx(module: &crate::ir::Module, name: &str) -> String {
                 out.push_str(&format!("        {} {}\n", cty, f.name));
             }
         }
-        out.push_str("\n");
+        out.push('\n');
     }
 
     // functions (aliased)
@@ -87,7 +87,7 @@ pub fn generate_pyx(module: &crate::ir::Module, name: &str) -> String {
                 other => params.push(format!("{} {}", to_cython_type(other), p.name)),
             }
         }
-        if let Some(_) = unknown_named {
+        if unknown_named.is_some() {
             out.push_str(&format!(
                 "    # WARNING: skipped {}, unknown named param\n\n",
                 fn_def.name
@@ -133,7 +133,7 @@ pub fn generate_pyx(module: &crate::ir::Module, name: &str) -> String {
         ));
     }
 
-    out.push_str("\n");
+    out.push('\n');
 
     // cdef classes for structs
     for s in &module.structs {
@@ -156,7 +156,7 @@ pub fn generate_pyx(module: &crate::ir::Module, name: &str) -> String {
             for f in &s.fields {
                 out.push_str(&format!("        self._c.{} = {}\n", f.name, f.name));
             }
-            out.push_str("\n");
+            out.push('\n');
         }
     }
 
@@ -242,8 +242,8 @@ pub fn generate_pyx(module: &crate::ir::Module, name: &str) -> String {
                         ));
                         call_args.push(format!("_{}_arr", p.name));
                         call_args.push(format!("len(_{}_bytes)", p.name));
-                    } else if let Some(dtype) = numpy_dtype_for(&**inner) {
-                        let inner_ct = to_cython_type(&**inner);
+                    } else if let Some(dtype) = numpy_dtype_for(inner) {
+                        let inner_ct = to_cython_type(inner);
                         // avoid duplicate memview declarations
                         if !created_mv.contains(&p.name) {
                             pre.push(format!(
@@ -259,7 +259,7 @@ pub fn generate_pyx(module: &crate::ir::Module, name: &str) -> String {
                     }
                 }
                 TypeRef::Option(inner) => {
-                    let inner_ct = to_cython_type(&**inner);
+                    let inner_ct = to_cython_type(inner);
                     pre.push(format!(
                         "    cdef {0} _{1}_val\n    cdef const {0}* _{1}_ptr",
                         inner_ct, p.name
@@ -326,7 +326,7 @@ pub fn generate_pyx(module: &crate::ir::Module, name: &str) -> String {
                     out.push_str("    finally:\n");
                     out.push_str("        rust2cython_free_string_array(_result, _out_len)\n");
                     out.push_str("    return _ret_list\n\n");
-                } else if let Some(_dtype) = numpy_dtype_for(&**inner) {
+                } else if let Some(_dtype) = numpy_dtype_for(inner) {
                     // find first vec param name
                     let first_vec = fn_def
                         .params
@@ -337,13 +337,13 @@ pub fn generate_pyx(module: &crate::ir::Module, name: &str) -> String {
                         let len_expr = format!("len(_{}_mv)", fname);
                         out.push_str(&format!(
                             "    cdef {0}[::1] _out = np.zeros({1}, dtype=np.float64)\n",
-                            to_cython_type(&**inner),
+                            to_cython_type(inner),
                             len_expr
                         ));
                         // assemble call args: need to include other args then out pointer
                         let mut call = call_args.clone();
-                        call.push(format!("&_out[0]"));
-                        call.push(format!("len(_out)"));
+                        call.push("&_out[0]".to_string());
+                        call.push("len(_out)".to_string());
                         out.push_str(&format!("    c_{}({})\n", fn_def.name, call.join(", ")));
                         out.push_str(&cleanup);
                         out.push_str("    return np.asarray(_out)\n\n");
@@ -375,7 +375,7 @@ pub fn generate_pyx(module: &crate::ir::Module, name: &str) -> String {
                     out.push_str(&format!("    if _result is NULL:\n        return None\n    out = {0}.__new__({0})\n    out._c = _result[0]\n    return out\n\n", s));
                 }
                 TypeRef::Str => {
-                    out.push_str(&format!("    # Memory automatically managed — rust2cython_free_string called on return.\n"));
+                    out.push_str("    # Memory automatically managed — rust2cython_free_string called on return.\n");
                     out.push_str(&format!(
                         "    cdef char* _result = c_{0}({1})\n",
                         fn_def.name,
@@ -391,7 +391,7 @@ pub fn generate_pyx(module: &crate::ir::Module, name: &str) -> String {
                 _ => {
                     out.push_str(&format!(
                         "    cdef const {0}* _result = c_{1}({2})\n",
-                        to_cython_type(&**inner),
+                        to_cython_type(inner),
                         fn_def.name,
                         call_args.join(", ")
                     ));
@@ -412,7 +412,7 @@ pub fn generate_pyx(module: &crate::ir::Module, name: &str) -> String {
                 out.push_str("    return _result\n\n");
             }
             TypeRef::Str => {
-                out.push_str(&format!("    # Memory automatically managed — rust2cython_free_string called on return.\n"));
+                out.push_str("    # Memory automatically managed — rust2cython_free_string called on return.\n");
                 out.push_str(&format!(
                     "    cdef char* _result = c_{0}({1})\n",
                     fn_def.name,

@@ -1,4 +1,6 @@
 #[no_mangle]
+mod rust_zscore_ffi;
+
 pub fn zscore(values: Vec<f64>) -> Vec<f64> {
     let n = values.len() as f64;
     let mean = values.iter().sum::<f64>() / n;

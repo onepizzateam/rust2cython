@@ -11,6 +11,7 @@ pub enum PrimKind {
     F32,
     F64,
     Bool,
+    Isize,
     Usize,
 }
 
@@ -32,6 +33,7 @@ pub struct Param {
     pub ty: TypeRef,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct FnDef {
     pub name: String,

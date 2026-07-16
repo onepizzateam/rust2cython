@@ -1,4 +1,5 @@
 mod buildrs_gen;
+mod crate_parser;
 mod header_gen;
 mod header_parser;
 mod ir;
@@ -8,7 +9,6 @@ mod setuptools_gen;
 mod shim_gen;
 mod shim_planner;
 mod syn_parser;
-mod crate_parser;
 mod translator;
 
 use clap::Parser;
@@ -57,7 +57,10 @@ struct Args {
     typed: bool,
 
     /// Print generated files to stdout instead of writing to disk
-    #[arg(long, help = "Print generated files to stdout instead of writing to disk")]
+    #[arg(
+        long,
+        help = "Print generated files to stdout instead of writing to disk"
+    )]
     dry_run: bool,
 
     /// Platform for rpath and library extension: auto, linux, macos (default: auto)
@@ -167,11 +170,6 @@ fn main() {
         return;
     }
 
-    if let Err(e) = std::fs::create_dir_all(&args.output) {
-        eprintln!("Error: failed to create output dir: {}", e);
-        std::process::exit(1);
-    }
-
     let pxd = pxd_gen::generate_pxd(&module, &name);
     let pyx = pyx_gen::generate_pyx(&module, &name);
     let header_content = header_gen::generate_header(&module, &name);
@@ -183,15 +181,27 @@ fn main() {
         String::new()
     };
 
-    let (setup_py, pyproject, build_sh, requirements_txt, requirements_dev_txt) = if !args.no_setup {
+    let (setup_py, pyproject, build_sh, requirements_txt, requirements_dev_txt) = if !args.no_setup
+    {
         let input_str = args.input.to_str().expect("input path is not valid UTF-8");
-        let (s, p) = setuptools_gen::generate_setup_files(&name, input_str, &args.platform, &args.lib_version);
+        let (s, p) = setuptools_gen::generate_setup_files(
+            &name,
+            input_str,
+            &args.platform,
+            &args.lib_version,
+        );
         let b = setuptools_gen::generate_build_instructions(&name, &args.platform, args.wheel);
         let req = setuptools_gen::generate_requirements();
         let req_dev = setuptools_gen::generate_dev_requirements();
         (s, p, b, req, req_dev)
     } else {
-        (String::new(), String::new(), String::new(), String::new(), String::new())
+        (
+            String::new(),
+            String::new(),
+            String::new(),
+            String::new(),
+            String::new(),
+        )
     };
 
     let pxd_path = args.output.join(format!("{}.pxd", name));
@@ -211,6 +221,10 @@ fn main() {
             println!("=== requirements-dev.txt ===\n{}", requirements_dev_txt);
         }
     } else {
+        if let Err(e) = std::fs::create_dir_all(&args.output) {
+            eprintln!("Error: failed to create output dir: {}", e);
+            std::process::exit(1);
+        }
         if let Err(e) = std::fs::write(&pxd_path, pxd) {
             eprintln!("Error: failed to write {}: {}", pxd_path.display(), e);
             std::process::exit(1);
@@ -350,22 +364,20 @@ fn main() {
                 args.output.display()
             );
         }
+    } else if shim_written {
+        println!(
+            "Generated {}.pxd, {}.pyx, {}_ffi.rs in {}",
+            name,
+            name,
+            name,
+            args.output.display()
+        );
     } else {
-        if shim_written {
-            println!(
-                "Generated {}.pxd, {}.pyx, {}_ffi.rs in {}",
-                name,
-                name,
-                name,
-                args.output.display()
-            );
-        } else {
-            println!(
-                "Generated {}.pxd and {}.pyx in {}",
-                name,
-                name,
-                args.output.display()
-            );
-        }
+        println!(
+            "Generated {}.pxd and {}.pyx in {}",
+            name,
+            name,
+            args.output.display()
+        );
     }
 }

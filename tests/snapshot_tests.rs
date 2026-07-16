@@ -24,7 +24,7 @@ fn rust_fixtures_generate_snapshots() {
             .unwrap_or_else(|e| panic!("failed to parse {}: {e}", fixture.display()));
 
         let pxd = rust2cython::pxd_gen::generate_pxd(&module, &stem);
-        let pyx = rust2cython::pyx_gen::generate_pyx(&module, &stem, false);
+        let pyx = rust2cython::pyx_gen::generate_pyx(&module, &stem);
         let header = rust2cython::header_gen::generate_header(&module, &stem);
 
         insta::assert_snapshot!(format!("{}_pxd", stem), pxd);
@@ -49,7 +49,10 @@ fn parse_rust_file_invalid_rs_returns_err() {
     let parsed = rust2cython::syn_parser::parse_rust_file(&path);
     let _ = fs::remove_file(&path);
 
-    assert!(parsed.is_err(), "expected invalid Rust fixture to return Err");
+    assert!(
+        parsed.is_err(),
+        "expected invalid Rust fixture to return Err"
+    );
 }
 
 #[test]
@@ -67,5 +70,8 @@ fn parse_c_header_invalid_h_returns_err() {
     // Intentionally do not create the file so parser takes the error path.
     let parsed = rust2cython::header_parser::parse_c_header(&path);
 
-    assert!(parsed.is_err(), "expected invalid C header fixture to return Err");
+    assert!(
+        parsed.is_err(),
+        "expected invalid C header fixture to return Err"
+    );
 }

@@ -15,6 +15,7 @@ fn prim_to_rust(t: &TypeRef) -> String {
             crate::ir::PrimKind::F32 => "f32".into(),
             crate::ir::PrimKind::F64 => "f64".into(),
             crate::ir::PrimKind::Bool => "bool".into(),
+            crate::ir::PrimKind::Isize => "isize".into(),
             crate::ir::PrimKind::Usize => "usize".into(),
         },
         TypeRef::Named(n) => n.clone(),
@@ -43,7 +44,7 @@ pub fn generate_shim(module: &Module) -> String {
     let shims: Vec<crate::ir::ShimFn> = module
         .functions
         .iter()
-        .map(|f| shim_planner::plan_shim(f))
+        .map(shim_planner::plan_shim)
         .collect();
 
     for shim in &shims {
@@ -113,7 +114,7 @@ pub fn generate_shim(module: &Module) -> String {
         out.push_str("use std::os::raw::c_char;\n");
     }
 
-    out.push_str("\n");
+    out.push('\n');
 
     // comments for named structs
     for name in named_structs.iter() {
@@ -123,7 +124,7 @@ pub fn generate_shim(module: &Module) -> String {
         ));
     }
     if !named_structs.is_empty() {
-        out.push_str("\n");
+        out.push('\n');
     }
 
     // Emit each shim
@@ -131,7 +132,7 @@ pub fn generate_shim(module: &Module) -> String {
         // check for unsupported in params
         let mut skip_due_to_param = None;
         for p in &shim.params {
-                if let crate::ir::FfiType::Unsupported(_msg) = &p.ffi_ty {
+            if let crate::ir::FfiType::Unsupported(_msg) = &p.ffi_ty {
                 // print warning to stderr
                 eprintln!("WARNING: skipping fn '{}' — {}", shim.original_name, _msg);
                 // emit explanatory SKIPPED comment in shim file
@@ -151,7 +152,7 @@ pub fn generate_shim(module: &Module) -> String {
             ));
             continue;
         }
-        if let Some(msg) = skip_due_to_param {
+        if let Some(_msg) = skip_due_to_param {
             // already emitted above
             continue;
         }
@@ -179,11 +180,14 @@ pub fn generate_shim(module: &Module) -> String {
                     sig.push_str(&format!("{}: *const c_char", p.name));
                 }
                 crate::ir::FfiType::SlicePtr { inner: _inner } => {
-                    let _ty = prim_to_rust(&_inner);
-                    sig.push_str(&format!("{}: *const {}, {}_len: usize", p.name, _ty, p.name));
+                    let _ty = prim_to_rust(_inner);
+                    sig.push_str(&format!(
+                        "{}: *const {}, {}_len: usize",
+                        p.name, _ty, p.name
+                    ));
                 }
                 crate::ir::FfiType::OptionPtr { inner: _inner } => {
-                    let _ty = prim_to_rust(&_inner);
+                    let _ty = prim_to_rust(_inner);
                     sig.push_str(&format!("{}: *const {}", p.name, _ty));
                 }
                 crate::ir::FfiType::StringSlicePtr => {
@@ -202,46 +206,37 @@ pub fn generate_shim(module: &Module) -> String {
         }
 
         // return and extra params for returns
-        let mut ret_str: String;
-        match &shim.ffi_ret {
-            crate::ir::FfiType::Direct(_orig) => {
-                let _ty = type_for_sig(_orig);
-                ret_str = _ty;
-            }
-            crate::ir::FfiType::CStr => {
-                ret_str = "*const c_char".into();
-            }
+        let ret_str = match &shim.ffi_ret {
+            crate::ir::FfiType::Direct(_orig) => type_for_sig(_orig),
+            crate::ir::FfiType::CStr => "*const c_char".into(),
             crate::ir::FfiType::SliceOut { inner: _inner } => {
-                let _ty = prim_to_rust(&_inner);
+                let _ty = prim_to_rust(_inner);
                 // add out params
                 if !first {
                     sig.push_str(", ");
                 }
-                first = false;
                 sig.push_str(&format!("out: *mut {}, out_len: usize", _ty));
-                ret_str = "()".into();
+                "()".into()
             }
             crate::ir::FfiType::OptionPtr { inner: _inner } => {
-                let _ty = prim_to_rust(&_inner);
-                ret_str = format!("*const {}", _ty);
+                let _ty = prim_to_rust(_inner);
+                format!("*const {}", _ty)
             }
             crate::ir::FfiType::ResultWithErrOut { ok: _ok } => {
-                let _ok_ty = prim_to_rust(&_ok);
+                let _ok_ty = prim_to_rust(_ok);
                 // add error_out param
                 if !first {
                     sig.push_str(", ");
                 }
-                first = false;
                 sig.push_str("error_out: *mut *mut c_char");
-                ret_str = _ok_ty;
+                _ok_ty
             }
             crate::ir::FfiType::StringArrayOut => {
                 if !first {
                     sig.push_str(", ");
                 }
-                first = false;
                 sig.push_str("out_len: *mut usize");
-                ret_str = "*mut *mut c_char".into();
+                "*mut *mut c_char".into()
             }
             crate::ir::FfiType::Unsupported(_msg) => {
                 out.push_str(&format!(
@@ -257,7 +252,7 @@ pub fn generate_shim(module: &Module) -> String {
                 ));
                 continue;
             }
-        }
+        };
 
         sig.push_str(&format!(") -> {} {{\n", ret_str));
 
@@ -267,7 +262,7 @@ pub fn generate_shim(module: &Module) -> String {
         let mut call_args: Vec<String> = Vec::new();
         for p in &shim.params {
             match &p.ffi_ty {
-                crate::ir::FfiType::Direct(orig) => {
+                crate::ir::FfiType::Direct(_orig) => {
                     call_args.push(p.name.clone());
                 }
                 crate::ir::FfiType::CStr => {
@@ -279,15 +274,14 @@ pub fn generate_shim(module: &Module) -> String {
                         call_args.push(format!("{}_s", p.name));
                     }
                 }
-                crate::ir::FfiType::SlicePtr { inner } => {
+                crate::ir::FfiType::SlicePtr { inner: _inner } => {
                     body.push_str(&format!(
                         "    let {}_slice = unsafe {{ std::slice::from_raw_parts({}, {}_len) }};\n",
                         p.name, p.name, p.name
                     ));
                     call_args.push(format!("{}_slice.to_vec()", p.name));
                 }
-                crate::ir::FfiType::OptionPtr { inner } => {
-                    let ty = prim_to_rust(inner);
+                crate::ir::FfiType::OptionPtr { inner: _inner } => {
                     body.push_str(&format!("    let {}_opt = if {}.is_null() {{ None }} else {{ Some(unsafe {{ *{} }}) }};\n", p.name, p.name, p.name));
                     call_args.push(format!("{}_opt", p.name));
                 }

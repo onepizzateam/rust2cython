@@ -1,0 +1,53 @@
+=== rust-bio/gc ===
+    Updating crates.io index
+   Compiling proc-macro2 v1.0.106
+   Compiling quote v1.0.46
+   Compiling unicode-ident v1.0.24
+   Compiling utf8parse v0.2.2
+   Compiling anstyle-parse v1.0.0
+   Compiling anstyle-query v1.1.5
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling colorchoice v1.0.5
+   Compiling anstyle v1.0.14
+   Compiling anstream v1.0.0
+   Compiling clap_lex v1.1.0
+   Compiling strsim v0.11.1
+   Compiling syn v2.0.118
+   Compiling anyhow v1.0.102
+   Compiling heck v0.5.0
+   Compiling clap_builder v4.6.0
+   Compiling clap_derive v4.6.1
+   Compiling clap v4.6.1
+   Compiling rust2cython v0.1.0 (/mnt/c/Users/palak_uge27/Documents/Codex/2026-07-16/hi/rust2cython)
+    Finished `release` profile [optimized] target(s) in 2m 14s
+     Running `target/release/rust2cython /tmp/rust-bio/src/seq_analysis/gc.rs -o examples/validate/rust_bio_gc/ -n rust_bio_gc`
+  found pub fn: gc_content
+  found pub fn: gc3_content
+Patched lib.rs — inserted mod rust_bio_gc_ffi before first pub fn
+Injected rust_bio_gc_ffi.rs into /tmp/rust-bio/src/seq_analysis
+Generated rust_bio_gc.pxd, rust_bio_gc.pyx, rust_bio_gc.h, rust_bio_gc_ffi.rs, setup.py, pyproject.toml, requirements.txt, requirements-dev.txt, BUILD.sh in examples/validate/rust_bio_gc/
+    Finished `release` profile [optimized] target(s) in 1.89s
+     Running `target/release/rust2cython /tmp/rust-bio/src/alignment/pairwise/mod.rs -o examples/validate/rust_bio_align/ -n rust_bio_align`
+  WARNING: no pub fn found. Are your functions marked pub?
+Patched lib.rs — inserted mod rust_bio_align_ffi before first pub fn
+Injected rust_bio_align_ffi.rs into /tmp/rust-bio/src/alignment/pairwise
+Generated rust_bio_align.pxd, rust_bio_align.pyx, rust_bio_align.h, rust_bio_align_ffi.rs, setup.py, pyproject.toml, requirements.txt, requirements-dev.txt, BUILD.sh in examples/validate/rust_bio_align/
+=== triple_accel ===
+    Finished `release` profile [optimized] target(s) in 2.13s
+     Running `target/release/rust2cython /tmp/triple_accel/src/lib.rs -o examples/validate/triple_accel/ -n triple_accel`
+  found pub fn: alloc_str
+  found pub fn: fill_str
+Patched lib.rs — inserted mod triple_accel_ffi before first pub fn
+Injected triple_accel_ffi.rs into /tmp/triple_accel/src
+Generated triple_accel.pxd, triple_accel.pyx, triple_accel.h, triple_accel_ffi.rs, setup.py, pyproject.toml, requirements.txt, requirements-dev.txt, BUILD.sh in examples/validate/triple_accel/
+=== statrs ===
+    Finished `release` profile [optimized] target(s) in 1.97s
+     Running `target/release/rust2cython /tmp/statrs/src/statistics/mod.rs -o examples/validate/statrs/ -n statrs`
+  WARNING: no pub fn found. Are your functions marked pub?
+Patched lib.rs — inserted mod statrs_ffi before first pub fn
+Injected statrs_ffi.rs into /tmp/statrs/src/statistics
+Generated statrs.pxd, statrs.pyx, statrs.h, statrs_ffi.rs, setup.py, pyproject.toml, requirements.txt, requirements-dev.txt, BUILD.sh in examples/validate/statrs/
+=== linfa-linear ===
+    Finished `release` profile [optimized] target(s) in 1.93s
+     Running `target/release/rust2cython /tmp/linfa/linfa-linear/src/lib.rs -o examples/validate/linfa_linear/ -n linfa_linear`
+Error: reading file /tmp/linfa/linfa-linear/src/lib.rs

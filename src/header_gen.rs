@@ -15,6 +15,7 @@ pub fn generate_header(module: &crate::ir::Module, _lib_name: &str) -> String {
             TypeRef::Primitive(F32) => Some("float".to_string()),
             TypeRef::Primitive(F64) => Some("double".to_string()),
             TypeRef::Primitive(Bool) => Some("bool".to_string()),
+            TypeRef::Primitive(Isize) => Some("ptrdiff_t".to_string()),
             TypeRef::Primitive(Usize) => Some("size_t".to_string()),
             _ => None,
         }

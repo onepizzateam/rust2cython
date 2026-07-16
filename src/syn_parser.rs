@@ -39,6 +39,7 @@ pub fn parse_rust_file(path: &std::path::Path) -> anyhow::Result<crate::ir::Modu
                         "f32" => TypeRef::Primitive(PrimKind::F32),
                         "f64" => TypeRef::Primitive(PrimKind::F64),
                         "bool" => TypeRef::Primitive(PrimKind::Bool),
+                        "isize" => TypeRef::Primitive(PrimKind::Isize),
                         "usize" => TypeRef::Primitive(PrimKind::Usize),
                         "String" => TypeRef::Str,
                         "Vec" => {
