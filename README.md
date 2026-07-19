@@ -38,13 +38,13 @@ Benchmark: z-score of 1,000,000 `f64` values, 100 iterations, median time. Run o
 
 | Approach | Median | Speedup vs Pure Python | Effort |
 |---|---|---|---|
-| Pure Python | 231.17 ms | 1x | ? |
-| NumPy | 7.29 ms | 31.7x | ? |
+| Pure Python | 231.17 ms | 1x | — |
+| NumPy | 7.29 ms | 31.7x | — |
 | cffi (manual) | 16.31 ms | 14.2x | write header + bindings by hand |
 | rust2cython (generated) | 16.36 ms | 14.1x | **one command** |
 | PyO3 (rewrite required) | 5.20 ms | 44.5x | rewrite Rust with Python annotations |
 
-rust2cython matches hand-written cffi performance exactly ? the same underlying `.so`, the same FFI boundary, zero manual work. PyO3 is faster because it eliminates the array copy entirely, but requires rewriting your Rust code with Python-specific annotations and gives up Cython compatibility.
+rust2cython matches hand-written cffi performance exactly — the same underlying `.so`, the same FFI boundary, zero manual work. PyO3 is faster because it eliminates the array copy entirely, but requires rewriting your Rust code with Python-specific annotations and gives up Cython compatibility.
 
 If you already use Cython, rust2cython is the only tool that lets you call idiomatic Rust from existing `.pyx` files without touching either codebase.
 
