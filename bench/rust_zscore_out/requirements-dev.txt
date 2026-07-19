@@ -1,5 +1,0 @@
-# requirements-dev.txt — tools for repairing wheels
-# On Linux: auditwheel
-# On macOS: delocate
-auditwheel
-delocate

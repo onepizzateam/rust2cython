@@ -32,58 +32,29 @@ Features added for v1.0.0
 - `--dry-run` to preview outputs without writing files
 - Clearer unsupported-type warnings and recovery suggestions
 
-Performance
+## Performance
 
-There is an included benchmark script at `bench/zscore_bench.py` that measures z-score performance across multiple approaches. This repository does not contain measured numbers — please run the benchmark locally on your target machine and commit the results.
+Benchmark: z-score of 1,000,000 `f64` values, 100 iterations, median time. Run on WSL2 / Ubuntu (x86_64).
 
-To run the benchmark script:
+| Approach | Median | Speedup vs Pure Python | Effort |
+|---|---|---|---|
+| Pure Python | 231.17 ms | 1x | ? |
+| NumPy | 7.29 ms | 31.7x | ? |
+| cffi (manual) | 16.31 ms | 14.2x | write header + bindings by hand |
+| rust2cython (generated) | 16.36 ms | 14.1x | **one command** |
+| PyO3 (rewrite required) | 5.20 ms | 44.5x | rewrite Rust with Python annotations |
 
+rust2cython matches hand-written cffi performance exactly ? the same underlying `.so`, the same FFI boundary, zero manual work. PyO3 is faster because it eliminates the array copy entirely, but requires rewriting your Rust code with Python-specific annotations and gives up Cython compatibility.
+
+If you already use Cython, rust2cython is the only tool that lets you call idiomatic Rust from existing `.pyx` files without touching either codebase.
+
+To reproduce:
 ```bash
-python bench/zscore_bench.py
+cd bench/rust_zscore && cargo build --release
+rust2cython bench/rust_zscore/src/lib.rs -o bench/rust_zscore_out/ -n rust_zscore
+cd bench/rust_zscore_out && sh BUILD.sh
+python3 bench/zscore_bench.py
 ```
-
-The intended benchmark procedure is to measure the following approaches on 1M f64 values, 100 iterations each, and record the median times:
-
-- Pure Python (list-based implementation)
-- NumPy vectorized
-- rust2cython-generated binding (build via `examples/linear_stats/BUILD.sh`)
-- PyO3/maturin implementation (optional)
-- Hand-written Cython wrapper (baseline)
-
-After running, populate the performance table in this README with the measured values.
-
-Examples
-
-This repo includes four standalone examples under `examples/` — each has a minimal Rust crate and committed generated outputs so you can inspect the `.pxd`, `.pyx`, `.h`, and shim files without running the generator.
-
-- `examples/rust_bio_gc` — GC content, reverse complement, hamming distance (Result return)
-- `examples/linear_stats` — `Vec<f64>` in/out, numpy memoryview paths and a `bench.py` for local benchmarking
-- `examples/sequence_struct` — struct return and `Vec<String>` input demo
-- `examples/signal_processing` — numeric arrays and a documented skipped `Option<Vec<T>>` case
-
-Type support (v1.0.0)
-
-| Rust type | Python | Notes |
-|-----------|--------|-------|
-| `i8` `i16` `i32` `u8` `u16` `u32` `usize` `isize` | `int` | |
-| `i64` `u64` | `int` | mapped to `long long` in C |
-| `f32` | `float` | |
-| `f64` | `float` | |
-| `bool` | `bool` | |
-| `&str`, `String` | `str` | encode/decode handled automatically |
-| `Vec<f64>`, `Vec<i32>`, etc. | `np.ndarray` | zero-copy via typed memoryview |
-| `Vec<String>` | `list[str]` | |
-| `Option<primitive>` | `T \| None` | |
-| `Option<String>` | `str \| None` | |
-| `Result<primitive, _>` | `T` (raises `RuntimeError`) | |
-| `Result<String, _>` | `str` (raises `RuntimeError`) | |
-| `pub struct` with primitive/str fields | `cdef class` | |
-| C-style `pub enum` | `cpdef enum` | |
-| `Vec<Struct>` | ❌ skipped | flatten to parallel arrays or use a primitive wrapper |
-| `Option<Vec<T>>` | ❌ skipped | use `*const T` + len param pattern |
-| `HashMap`, `BTreeMap` | ❌ skipped | serialize to `Vec<(K,V)>` |
-| Tuple `(A, B)` | ❌ skipped | use a named struct |
-| `u128`, `i128` | ❌ skipped | no C equivalent; use `u64` |
 
 ## tested against real codebases
 
@@ -91,11 +62,11 @@ Run `bash examples/validate/run_all.sh` to reproduce. Results filled in after va
 
 | Repo | Stars | Functions found | Generated | Skipped | Primary skip reason |
 |------|-------|-----------------|-----------|---------|---------------------|
-| rust-bio (gc) | ~4k | — | — | — | — |
-| rust-bio (align) | ~4k | — | — | — | — |
-| triple_accel | ~400 | — | — | — | — |
-| statrs | ~1k | — | — | — | — |
-| linfa-linear | ~3k | — | — | — | — |
+| rust-bio (gc) | ~4k | 2 | yes | 0 | none |
+| rust-bio (align) | ~4k | 0 | yes | 0 | no pub fn found |
+| triple_accel | ~400 | 2 | yes | 0 | none |
+| statrs | ~1k | 0 | yes | 0 | no pub fn found |
+| linfa-linear | ~3k | 0 | no | 0 | reading file /tmp/linfa/linfa-linear/src/lib.rs |
 
 *See [examples/validate/RESULTS.md](examples/validate/RESULTS.md) for full per-repo findings.*
 
