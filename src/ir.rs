@@ -31,12 +31,14 @@ pub enum TypeRef {
 pub struct Param {
     pub name: String,
     pub ty: TypeRef,
+    pub is_slice: bool,
 }
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct FnDef {
     pub name: String,
+    pub original_name: String,
     pub params: Vec<Param>,
     pub ret: TypeRef,
     pub doc: Option<String>,
@@ -77,15 +79,37 @@ pub struct Module {
 }
 
 impl Module {
-    /// Merge multiple modules into one by concatenating their vectors.
+    /// Merge shallowly parsed modules while preserving the first public item
+    /// with a given exported name. Re-exports can otherwise expose the same
+    /// source item through more than one parsed module.
     pub fn merge_modules(mods: Vec<Module>) -> Module {
         let mut functions = Vec::new();
         let mut structs = Vec::new();
         let mut enums = Vec::new();
+        let mut seen_fns = std::collections::HashSet::new();
+        let mut seen_structs = std::collections::HashSet::new();
+        let mut seen_enums = std::collections::HashSet::new();
         for m in mods {
-            functions.extend(m.functions);
-            structs.extend(m.structs);
-            enums.extend(m.enums);
+            for function in m.functions {
+                if seen_fns.insert(function.name.clone()) {
+                    functions.push(function);
+                } else {
+                    eprintln!(
+                        "[INFO] fn `{}` already emitted — skipping duplicate",
+                        function.name
+                    );
+                }
+            }
+            for structure in m.structs {
+                if seen_structs.insert(structure.name.clone()) {
+                    structs.push(structure);
+                }
+            }
+            for enumeration in m.enums {
+                if seen_enums.insert(enumeration.name.clone()) {
+                    enums.push(enumeration);
+                }
+            }
         }
         Module {
             functions,
@@ -100,6 +124,7 @@ pub struct ShimParam {
     pub name: String,
     pub original_ty: TypeRef,
     pub ffi_ty: FfiType,
+    pub is_slice: bool,
 }
 
 #[derive(Debug, Clone)]

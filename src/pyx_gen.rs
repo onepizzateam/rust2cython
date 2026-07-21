@@ -36,6 +36,8 @@ pub fn generate_pyx(module: &crate::ir::Module, name: &str) -> String {
     out.push_str("    void rust2cython_free_string_array(char** ptr, size_t len)\n\n");
 
     // structs
+    let struct_names: std::collections::HashSet<String> =
+        module.structs.iter().map(|s| s.name.clone()).collect();
     for s in &module.structs {
         out.push_str(&format!(
             "    ctypedef struct C{} \"{}\":\n",
@@ -44,9 +46,29 @@ pub fn generate_pyx(module: &crate::ir::Module, name: &str) -> String {
         if s.fields.is_empty() {
             out.push_str("        pass\n");
         } else {
+            let mut emitted_fields = 0usize;
             for f in &s.fields {
-                let cty = to_cython_type(&f.ty);
-                out.push_str(&format!("        {} {}\n", cty, f.name));
+                if !crate::pxd_gen::field_is_concrete(&f.ty, &struct_names) {
+                    out.push_str(&format!(
+                        "        # field `{}` skipped — unresolved generic\n",
+                        f.name
+                    ));
+                    continue;
+                }
+                let cty = match &f.ty {
+                    TypeRef::Named(name) => format!("C{}", name),
+                    other => to_cython_type(other),
+                };
+                let (field_name, renamed) = crate::pxd_gen::cython_ident(&f.name);
+                out.push_str(&format!("        {} {}", cty, field_name));
+                if let Some(original) = renamed {
+                    out.push_str(&format!(" # renamed from `{}` (Cython keyword)", original));
+                }
+                out.push('\n');
+                emitted_fields += 1;
+            }
+            if emitted_fields == 0 {
+                out.push_str("        pass\n");
             }
         }
         out.push('\n');
@@ -102,6 +124,8 @@ pub fn generate_pyx(module: &crate::ir::Module, name: &str) -> String {
             TypeRef::Option(inner) => {
                 if **inner == TypeRef::Str {
                     "const char*".to_string()
+                } else if let TypeRef::Named(name) = &**inner {
+                    format!("const C{}*", name)
                 } else {
                     format!("const {}*", to_cython_type(inner))
                 }
@@ -120,6 +144,7 @@ pub fn generate_pyx(module: &crate::ir::Module, name: &str) -> String {
                 extra.push("char** error_out".to_string());
                 to_cython_type(ok)
             }
+            TypeRef::Named(name) => format!("C{}", name),
             other => to_cython_type(other),
         };
 
@@ -143,18 +168,31 @@ pub fn generate_pyx(module: &crate::ir::Module, name: &str) -> String {
         let ctor_params = s
             .fields
             .iter()
+            .filter(|f| crate::pxd_gen::field_is_concrete(&f.ty, &struct_names))
             .map(|f| {
-                let cty = to_cython_type(&f.ty);
-                format!("{} {}", cty, f.name)
+                let cty = match &f.ty {
+                    TypeRef::Named(name) if struct_names.contains(name) => name.clone(),
+                    other => to_cython_type(other),
+                };
+                let (param_name, _) = crate::pxd_gen::cython_ident(&f.name);
+                format!("{} {}", cty, param_name)
             })
             .collect::<Vec<_>>()
             .join(", ");
         out.push_str(&format!("    def __init__(self, {}):\n", ctor_params));
-        if s.fields.is_empty() {
+        if !s
+            .fields
+            .iter()
+            .any(|f| crate::pxd_gen::field_is_concrete(&f.ty, &struct_names))
+        {
             out.push_str("        pass\n\n");
         } else {
             for f in &s.fields {
-                out.push_str(&format!("        self._c.{} = {}\n", f.name, f.name));
+                if !crate::pxd_gen::field_is_concrete(&f.ty, &struct_names) {
+                    continue;
+                }
+                let (field_name, _) = crate::pxd_gen::cython_ident(&f.name);
+                out.push_str(&format!("        self._c.{0} = {0}\n", field_name));
             }
             out.push('\n');
         }
@@ -178,9 +216,12 @@ pub fn generate_pyx(module: &crate::ir::Module, name: &str) -> String {
         let params_sig = fn_def
             .params
             .iter()
-            .map(|p| match &p.ty {
-                TypeRef::Named(sn) => format!("{}: {}", p.name, sn),
-                _ => p.name.clone(),
+            .map(|p| {
+                let (param_name, _) = crate::pxd_gen::cython_ident(&p.name);
+                match &p.ty {
+                    TypeRef::Named(sn) => format!("{}: {}", param_name, sn),
+                    _ => param_name,
+                }
             })
             .collect::<Vec<_>>()
             .join(", ");
@@ -314,8 +355,6 @@ pub fn generate_pyx(module: &crate::ir::Module, name: &str) -> String {
                     ));
                     out.push_str("    cdef list _ret_list = []\n");
                     out.push_str("    cdef size_t _i\n");
-                    out.push_str("    cdef list _ret_list = []\n");
-                    out.push_str("    cdef size_t _i\n");
                     out.push_str(&cleanup);
                     out.push_str("    try:\n");
                     out.push_str("        if _result is not NULL:\n");
@@ -347,7 +386,23 @@ pub fn generate_pyx(module: &crate::ir::Module, name: &str) -> String {
                         out.push_str(&format!("    c_{}({})\n", fn_def.name, call.join(", ")));
                         out.push_str(&cleanup);
                         out.push_str("    return np.asarray(_out)\n\n");
+                    } else {
+                        let rust_type = format!("{:?}", fn_def.ret);
+                        eprintln!("[WARN] fn `{}` — return type `{}` has no FFI mapping. Emitting NotImplementedError stub in .pyx.", fn_def.name, rust_type);
+                        out.push_str(&format!(
+                            "    # return type `{}` has no Cython mapping — not implemented\n",
+                            rust_type
+                        ));
+                        out.push_str(&format!("    raise NotImplementedError(\"{}: return type `{}` has no Cython FFI mapping\")\n\n", fn_def.name, rust_type));
                     }
+                } else {
+                    let rust_type = format!("{:?}", fn_def.ret);
+                    eprintln!("[WARN] fn `{}` — return type `{}` has no FFI mapping. Emitting NotImplementedError stub in .pyx.", fn_def.name, rust_type);
+                    out.push_str(&format!(
+                        "    # return type `{}` has no Cython mapping — not implemented\n",
+                        rust_type
+                    ));
+                    out.push_str(&format!("    raise NotImplementedError(\"{}: return type `{}` has no Cython FFI mapping\")\n\n", fn_def.name, rust_type));
                 }
             }
             TypeRef::Named(s) => {
@@ -435,11 +490,14 @@ pub fn generate_pyx(module: &crate::ir::Module, name: &str) -> String {
                 out.push_str("    return\n\n");
             }
             _ => {
+                let rust_type = format!("{:?}", fn_def.ret);
+                eprintln!("[WARN] fn `{}` — return type `{}` has no FFI mapping. Emitting NotImplementedError stub in .pyx.", fn_def.name, rust_type);
                 out.push_str(&cleanup);
                 out.push_str(&format!(
-                    "    # Unsupported return type for {}\n\n",
-                    fn_def.name
+                    "    # return type `{}` has no Cython mapping — not implemented\n",
+                    rust_type
                 ));
+                out.push_str(&format!("    raise NotImplementedError(\"{}: return type `{}` has no Cython FFI mapping\")\n\n", fn_def.name, rust_type));
             }
         }
     }

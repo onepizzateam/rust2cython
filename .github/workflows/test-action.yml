@@ -1,0 +1,32 @@
+name: Test GitHub Action
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  test-action:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Test action on simple fixture
+        uses: ./
+        with:
+          input: tests/fixtures/simple.rs
+          output: /tmp/test-output
+          name: simple
+          no_shim: 'true'
+      - name: Verify output exists
+        run: |
+          test -f /tmp/test-output/simple.pxd || (echo "FAIL: .pxd not generated" && exit 1)
+          test -f /tmp/test-output/simple.pyx || (echo "FAIL: .pyx not generated" && exit 1)
+          test -f /tmp/test-output/simple.h || (echo "FAIL: .h not generated" && exit 1)
+      - name: Test action on impl methods fixture
+        uses: ./
+        with:
+          input: tests/fixtures/impl_methods.rs
+          output: /tmp/test-impl-output
+          name: impl_methods
+          no_shim: 'true'
+      - name: Verify impl methods output
+        run: grep "Calculator_add" /tmp/test-impl-output/impl_methods.pxd

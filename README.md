@@ -12,6 +12,8 @@ cd bindings
 sh BUILD.sh
 ```
 
+**Try it online:** [playground.rust2cython.dev](https://playground.rust2cython.dev) — paste Rust, see generated Cython instantly.
+
 What you get
 
 - `mylib.pxd` — Cython declarations (extern block)
@@ -31,6 +33,8 @@ Features added for v1.0.0
 - `--typed` mode to emit Python annotations in generated `.pyx`
 - `--dry-run` to preview outputs without writing files
 - Clearer unsupported-type warnings and recovery suggestions
+- `impl` block support: associated functions (static methods without `self`) are automatically discovered and wrapped
+- `&[T]` slice parameters: mapped to `(const T*, size_t len)` — same as `Vec<T>`
 
 ## Performance
 
@@ -42,11 +46,11 @@ Benchmark: z-score of 1,000,000 `f64` values, 100 iterations, median time. Run o
 | NumPy | 7.29 ms | 31.7x | — |
 | cffi (manual) | 16.31 ms | 14.2x | write header + bindings by hand |
 | rust2cython (generated) | 16.36 ms | 14.1x | **one command** |
-| PyO3 (rewrite required) | 5.20 ms | 44.5x | rewrite Rust with Python annotations |
+| PyO3 | 5.20 ms | 44.5x | Python-specific attribute macros |
 
-rust2cython matches hand-written cffi performance exactly — the same underlying `.so`, the same FFI boundary, zero manual work. PyO3 is faster because it eliminates the array copy entirely, but requires rewriting your Rust code with Python-specific annotations and gives up Cython compatibility.
+rust2cython matches hand-written cffi performance exactly — the same underlying `.so`, the same FFI boundary, zero manual work. PyO3 is faster and eliminates the array copy, but requires annotating your Rust source with Python-specific macros (`#[pyfunction]`, `#[pymodule]`) and gives up compatibility with hand-written Cython code. If you're starting a new project and don't need Cython, use PyO3.
 
-If you already use Cython, rust2cython is the only tool that lets you call idiomatic Rust from existing `.pyx` files without touching either codebase.
+rust2cython is for codebases that already use Cython: you can call Rust from existing `.pyx` files without touching either codebase.
 
 To reproduce:
 ```bash
@@ -95,6 +99,20 @@ Shallow crate mode:
 ```bash
 rust2cython --crate Cargo.toml -o bindings -n mylib
 ```
+
+## Use in CI (GitHub Action)
+
+Add to your workflow to auto-generate bindings on every push:
+
+```yaml
+- uses: onepizzateam/rust2cython@v1
+  with:
+    input: src/lib.rs
+    output: bindings/
+    name: mylib
+```
+
+See [.github/action.yml](.github/action.yml) for all inputs.
 
 Contributing
 

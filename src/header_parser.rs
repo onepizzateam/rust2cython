@@ -200,11 +200,13 @@ pub fn parse_c_header(path: &std::path::Path) -> anyhow::Result<crate::ir::Modul
                         params.push(crate::ir::Param {
                             name: pname,
                             ty: pty,
+                            is_slice: false,
                         });
                     }
                 }
 
                 module.functions.push(crate::ir::FnDef {
+                    original_name: name.clone(),
                     name,
                     params,
                     ret: ret_ty,

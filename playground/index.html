@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>rust2cython playground</title>
+  <style>
+    :root { color-scheme: dark; --bg:#0b1020; --panel:#121a2e; --line:#273554; --text:#e8eefc; --muted:#94a3c2; --accent:#ff9d3d; }
+    * { box-sizing:border-box } body { margin:0; font-family:Inter,ui-sans-serif,system-ui,sans-serif; background:radial-gradient(circle at top,#17264b,var(--bg) 45%); color:var(--text); min-height:100vh; }
+    main { max-width:1500px; margin:auto; padding:42px 26px; } h1 { margin:0; font-size:clamp(2rem,5vw,4rem); letter-spacing:-.06em; } .lead { color:var(--muted); font-size:1.1rem; margin:10px 0 30px; }
+    .toolbar,.tabs { display:flex; gap:10px; align-items:center; flex-wrap:wrap; } select,input,button { border:1px solid var(--line); border-radius:8px; background:#0d1529; color:var(--text); padding:10px 12px; font:inherit; } input { width:130px; } button { cursor:pointer; } button.primary { background:var(--accent); color:#201100; border-color:var(--accent); font-weight:700; } button.tab.active { border-color:var(--accent); color:var(--accent); }
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-top:18px; } .panel { border:1px solid var(--line); border-radius:13px; overflow:hidden; background:color-mix(in srgb,var(--panel) 94%,black); min-height:580px; } .label { display:flex; justify-content:space-between; align-items:center; padding:11px 14px; border-bottom:1px solid var(--line); color:var(--muted); font-size:.88rem; }
+    textarea,pre { margin:0; width:100%; min-height:530px; border:0; background:#0a1122; color:#dce7ff; padding:18px; font:14px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace; resize:vertical; tab-size:4; } pre { white-space:pre; overflow:auto; } .status { color:var(--muted); min-height:1.5em; margin-left:auto; } @media(max-width:850px){.grid{grid-template-columns:1fr}.panel{min-height:420px}textarea,pre{min-height:370px}}
+  </style>
+</head>
+<body>
+<main>
+  <h1>rust2cython <span style="color:var(--accent)">playground</span></h1>
+  <p class="lead">Paste idiomatic Rust → get Cython bindings. No rewriting. No PyO3 annotations.</p>
+  <div class="toolbar">
+    <select id="examples" aria-label="Example"><option value="">Load an example…</option><option value="zscore">Z-score (numeric)</option><option value="strings">String processing</option><option value="calculator">Struct with associated functions</option><option value="option">Option and Result</option></select>
+    <label>Library <input id="name" value="mylib" pattern="[A-Za-z_][A-Za-z0-9_]*"></label>
+    <button class="primary" id="generate">Generate</button><span class="status" id="status"></span>
+  </div>
+  <div class="grid">
+    <section class="panel"><div class="label">Rust source <span>Rust</span></div><textarea id="code" spellcheck="false">pub fn add(a: f64, b: f64) -> f64 {
+    a + b
+}</textarea></section>
+    <section class="panel"><div class="label"><div class="tabs"><button class="tab active" data-output="pyx">.pyx</button><button class="tab" data-output="pxd">.pxd</button><button class="tab" data-output="h">.h</button></div><button id="copy">Copy</button></div><pre id="output">Click Generate to see bindings.</pre></section>
+  </div>
+</main>
+<script>
+const examples={
+ zscore:`pub fn z_score(values: &[f64], mean: f64, stddev: f64) -> Vec<f64> {\n    values.iter().map(|x| (x - mean) / stddev).collect()\n}`,
+ strings:`pub fn greet(name: &str) -> String {\n    format!("Hello, {name}!")\n}`,
+ calculator:`pub struct Calculator { pub value: f64 }\n\nimpl Calculator {\n    pub fn new(initial: f64) -> Calculator { Calculator { value: initial } }\n    pub fn add(a: f64, b: f64) -> f64 { a + b }\n}`,
+ option:`pub fn maybe_sqrt(x: f64) -> Option<f64> {\n    if x >= 0.0 { Some(x.sqrt()) } else { None }\n}\npub fn safe_div(a: f64, b: f64) -> Result<f64, String> {\n    if b == 0.0 { Err("division by zero".into()) } else { Ok(a / b) }\n}`};
+let result={}, current='pyx'; const $=id=>document.getElementById(id); const render=()=> $('output').textContent=result[current]||'No output.';
+$('examples').onchange=e=>{if(e.target.value) $('code').value=examples[e.target.value]};
+document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{current=b.dataset.output;document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===b));render()});
+$('copy').onclick=async()=>{await navigator.clipboard.writeText(result[current]||'');$('status').textContent='Copied.'};
+$('generate').onclick=async()=>{const status=$('status'), name=$('name').value.trim()||'mylib'; status.textContent='Generating…'; try { const r=await fetch('/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:$('code').value,name})}); const data=await r.json(); if(!r.ok||data.error) throw Error(data.error||'Generation failed'); result=data; render(); status.textContent='Done.'; } catch(e) { result[current]='// '+e.message; render(); status.textContent='Could not generate bindings.'; }};
+</script>
+</body></html>

@@ -279,7 +279,11 @@ pub fn generate_shim(module: &Module) -> String {
                         "    let {}_slice = unsafe {{ std::slice::from_raw_parts({}, {}_len) }};\n",
                         p.name, p.name, p.name
                     ));
-                    call_args.push(format!("{}_slice.to_vec()", p.name));
+                    if p.is_slice {
+                        call_args.push(format!("{}_slice", p.name));
+                    } else {
+                        call_args.push(format!("{}_slice.to_vec()", p.name));
+                    }
                 }
                 crate::ir::FfiType::OptionPtr { inner: _inner } => {
                     body.push_str(&format!("    let {}_opt = if {}.is_null() {{ None }} else {{ Some(unsafe {{ *{} }}) }};\n", p.name, p.name, p.name));

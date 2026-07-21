@@ -49,7 +49,11 @@ struct Args {
     no_inject: bool,
 
     /// Path to a Cargo.toml to operate on the whole crate (shallow module traversal)
-    #[arg(long, value_name = "CARGO_TOML")]
+    #[arg(
+        long = "crate",
+        visible_alias = "crate-path",
+        value_name = "CARGO_TOML"
+    )]
     crate_path: Option<PathBuf>,
 
     /// Emit typed Python annotations in generated .pyx

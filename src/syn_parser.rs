@@ -83,6 +83,9 @@ pub fn parse_rust_file(path: &std::path::Path) -> anyhow::Result<crate::ir::Modu
                 }
             }
             syn::Type::Reference(r) => {
+                if let syn::Type::Slice(slice) = &*r.elem {
+                    return TypeRef::Vec(Box::new(convert(&slice.elem)));
+                }
                 if let syn::Type::Path(tp) = &*r.elem {
                     if let Some(seg) = tp.path.segments.last() {
                         if seg.ident == "str" {
@@ -121,6 +124,7 @@ pub fn parse_rust_file(path: &std::path::Path) -> anyhow::Result<crate::ir::Modu
                             params.push(crate::ir::Param {
                                 name: pname,
                                 ty: pty,
+                                is_slice: matches!(&*pt.ty, syn::Type::Reference(r) if matches!(&*r.elem, syn::Type::Slice(_))),
                             });
                         }
                     }
@@ -129,10 +133,74 @@ pub fn parse_rust_file(path: &std::path::Path) -> anyhow::Result<crate::ir::Modu
                         syn::ReturnType::Type(_, ty) => convert(ty),
                     };
                     module.functions.push(crate::ir::FnDef {
+                        original_name: name.clone(),
                         name,
                         params,
                         ret,
                         doc,
+                    });
+                }
+            }
+            syn::Item::Impl(item_impl) => {
+                let Some(struct_name) = (match &*item_impl.self_ty {
+                    syn::Type::Path(tp) => tp
+                        .path
+                        .segments
+                        .last()
+                        .map(|segment| segment.ident.to_string()),
+                    _ => None,
+                }) else {
+                    continue;
+                };
+
+                for impl_item in item_impl.items {
+                    let syn::ImplItem::Fn(method) = impl_item else {
+                        continue;
+                    };
+                    if !matches!(method.vis, syn::Visibility::Public(_)) {
+                        continue;
+                    }
+                    let method_name = method.sig.ident.to_string();
+                    if method
+                        .sig
+                        .inputs
+                        .iter()
+                        .any(|input| matches!(input, syn::FnArg::Receiver(_)))
+                    {
+                        println!(
+                            "  skipped impl method {}::{} (instance method, requires self)",
+                            struct_name, method_name
+                        );
+                        continue;
+                    }
+
+                    let mut params = Vec::new();
+                    for input in &method.sig.inputs {
+                        let syn::FnArg::Typed(pt) = input else {
+                            continue;
+                        };
+                        let pname = match &*pt.pat {
+                            syn::Pat::Ident(pi) => pi.ident.to_string(),
+                            _ => "_".to_string(),
+                        };
+                        params.push(crate::ir::Param {
+                            name: pname,
+                            ty: convert(&pt.ty),
+                            is_slice: matches!(&*pt.ty, syn::Type::Reference(r) if matches!(&*r.elem, syn::Type::Slice(_))),
+                        });
+                    }
+                    let ret = match &method.sig.output {
+                        syn::ReturnType::Default => crate::ir::TypeRef::Void,
+                        syn::ReturnType::Type(_, ty) => convert(ty),
+                    };
+                    let name = format!("{}_{}", struct_name, method_name);
+                    println!("  found impl fn: {}::{}", struct_name, method_name);
+                    module.functions.push(crate::ir::FnDef {
+                        name,
+                        original_name: format!("{}::{}", struct_name, method_name),
+                        params,
+                        ret,
+                        doc: extract_doc(&method.attrs),
                     });
                 }
             }

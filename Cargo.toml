@@ -2,15 +2,24 @@
 name = "rust2cython"
 version = "0.1.0"
 edition = "2021"
-description = "Generate Cython .pxd/.pyx bindings and a complete build pipeline from idiomatic Rust source"
+description = "Generate Cython .pxd/.pyx bindings and C headers from idiomatic Rust source"
 license = "MIT"
 repository = "https://github.com/onepizzateam/rust2cython"
 keywords = ["cython", "ffi", "bindings", "python", "codegen"]
-categories = ["development-tools", "api-bindings"]
+categories = ["development-tools", "external-ffi-bindings"]
 readme = "README.md"
 homepage = "https://github.com/onepizzateam/rust2cython"
 documentation = "https://github.com/onepizzateam/rust2cython#readme"
-exclude = [".github", "examples/*/target", "tests/snapshots/target"]
+exclude = [
+    "bench/",
+    "examples/validate/",
+    "examples/*/build/",
+    "examples/*/bindings/build/",
+    "**/*.so",
+    "**/*.pyd",
+    "**/*.dll",
+    "**/*.lib",
+]
 
 [[bin]]
 name = "rust2cython"

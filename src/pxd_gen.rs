@@ -1,5 +1,122 @@
 use crate::ir::TypeRef;
 
+const CYTHON_KEYWORDS: &[&str] = &[
+    "raise",
+    "except",
+    "import",
+    "return",
+    "pass",
+    "class",
+    "def",
+    "cdef",
+    "cpdef",
+    "extern",
+    "from",
+    "with",
+    "as",
+    "in",
+    "not",
+    "and",
+    "or",
+    "is",
+    "lambda",
+    "yield",
+    "global",
+    "del",
+    "print",
+    "exec",
+    "assert",
+    "break",
+    "continue",
+    "for",
+    "while",
+    "if",
+    "elif",
+    "else",
+    "try",
+    "finally",
+    "cimport",
+    "include",
+    "ctypedef",
+    "struct",
+    "union",
+    "enum",
+    "void",
+    "char",
+    "int",
+    "long",
+    "float",
+    "double",
+    "bint",
+    "object",
+    "list",
+    "dict",
+    "tuple",
+    "set",
+    "bytes",
+    "bytearray",
+    "unicode",
+    "str",
+    "bool",
+    "complex",
+    "type",
+    "property",
+    "readonly",
+    "public",
+    "api",
+    "inline",
+    "nogil",
+    "gil",
+];
+
+pub(crate) fn cython_ident(name: &str) -> (String, Option<String>) {
+    if CYTHON_KEYWORDS.contains(&name) {
+        (
+            format!("{} _", name).replace(" _", "_"),
+            Some(name.to_string()),
+        )
+    } else {
+        (name.to_string(), None)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum StructEmitMode {
+    Full,
+    Partial,
+    Opaque,
+}
+
+pub(crate) fn field_is_concrete(
+    ty: &TypeRef,
+    struct_names: &std::collections::HashSet<String>,
+) -> bool {
+    match ty {
+        TypeRef::Primitive(_) => true,
+        TypeRef::Named(name) => struct_names.contains(name),
+        TypeRef::Ptr(inner) => field_is_concrete(inner, struct_names),
+        _ => false,
+    }
+}
+
+pub(crate) fn resolve_struct_emit_mode(
+    s: &crate::ir::StructDef,
+    struct_names: &std::collections::HashSet<String>,
+) -> StructEmitMode {
+    let concrete = s
+        .fields
+        .iter()
+        .filter(|f| field_is_concrete(&f.ty, struct_names))
+        .count();
+    if concrete == s.fields.len() {
+        StructEmitMode::Full
+    } else if concrete == 0 {
+        StructEmitMode::Opaque
+    } else {
+        StructEmitMode::Partial
+    }
+}
+
 fn has_unknown_named(
     ty: &TypeRef,
     struct_names: &std::collections::HashSet<String>,
@@ -36,8 +153,19 @@ pub fn generate_pxd(module: &crate::ir::Module, lib_name: &str) -> String {
     let struct_names: std::collections::HashSet<String> =
         module.structs.iter().map(|s| s.name.clone()).collect();
 
+    let struct_modes: std::collections::HashMap<String, StructEmitMode> = module
+        .structs
+        .iter()
+        .map(|s| (s.name.clone(), resolve_struct_emit_mode(s, &struct_names)))
+        .collect();
+
     // Structs first (inside extern block)
     for s in &module.structs {
+        let mode = struct_modes[&s.name];
+        if mode == StructEmitMode::Opaque {
+            out.push_str(&format!("    ctypedef void* C{}_t\n\n", s.name));
+            continue;
+        }
         out.push_str(&format!(
             "    ctypedef struct C{} \"{}\":\n",
             s.name, s.name
@@ -45,12 +173,36 @@ pub fn generate_pxd(module: &crate::ir::Module, lib_name: &str) -> String {
         if s.fields.is_empty() {
             out.push_str("        pass\n");
         } else {
+            let mut emitted_fields = 0usize;
             for f in &s.fields {
-                let cty = to_cython_type(&f.ty);
-                out.push_str(&format!("        {} {}\n", cty, f.name));
+                if !field_is_concrete(&f.ty, &struct_names) {
+                    let type_name = format!("{:?}", f.ty);
+                    out.push_str(&format!(
+                        "        # field `{}`: `{}` skipped — unresolved generic\n",
+                        f.name, type_name
+                    ));
+                    continue;
+                }
+                let cty = match &f.ty {
+                    TypeRef::Named(name) if struct_names.contains(name) => format!("C{}", name),
+                    other => to_cython_type(other),
+                };
+                let (field_name, renamed) = cython_ident(&f.name);
+                out.push_str(&format!("        {} {}", cty, field_name));
+                if let Some(original) = renamed {
+                    out.push_str(&format!(" # renamed from `{}` (Cython keyword)", original));
+                }
+                out.push('\n');
+                emitted_fields += 1;
+            }
+            if emitted_fields == 0 {
+                out.push_str("        pass\n");
             }
         }
         out.push('\n');
+        if mode == StructEmitMode::Partial {
+            eprintln!("[WARN] Struct `{}` emitted with incomplete fields — do not use sizeof({}_t) in C; treat as opaque or add a newtype.", s.name, s.name);
+        }
     }
 
     // Functions
@@ -94,35 +246,49 @@ pub fn generate_pxd(module: &crate::ir::Module, lib_name: &str) -> String {
                 extra_params.push("char** error_out".to_string());
                 to_cython_type(ok)
             }
+            TypeRef::Named(s) if struct_modes.get(s) == Some(&StructEmitMode::Opaque) => {
+                format!("C{}_t", s)
+            }
             TypeRef::Named(s) => format!("C{}", s),
             TypeRef::Void => "void".to_string(),
             other => to_cython_type(other),
         };
 
         let mut params: Vec<String> = Vec::new();
+        let mut renamed_params = Vec::new();
         for p in &fn_def.params {
+            let (param_name, renamed) = cython_ident(&p.name);
+            if let Some(original) = renamed {
+                renamed_params.push(original);
+            }
             match &p.ty {
-                TypeRef::Str => params.push(format!("const char* {}", p.name)),
+                TypeRef::Str => params.push(format!("const char* {}", param_name)),
                 TypeRef::Option(inner) => {
                     if **inner == TypeRef::Str {
-                        params.push(format!("const char* {}", p.name))
+                        params.push(format!("const char* {}", param_name))
                     } else {
-                        params.push(format!("const {}* {}", to_cython_type(inner), p.name))
+                        params.push(format!("const {}* {}", to_cython_type(inner), param_name))
                     }
                 }
                 TypeRef::Vec(inner) => {
                     if **inner == TypeRef::Str {
-                        params.push(format!("const char** {}, size_t {}_len", p.name, p.name));
+                        params.push(format!(
+                            "const char** {}, size_t {}_len",
+                            param_name, param_name
+                        ));
                     } else {
                         let inner_ct = to_cython_type(inner);
                         params.push(format!(
                             "const {}* {}, size_t {}_len",
-                            inner_ct, p.name, p.name
+                            inner_ct, param_name, param_name
                         ));
                     }
                 }
-                TypeRef::Named(s) => params.push(format!("C{} {}", s, p.name)),
-                other => params.push(format!("{} {}", to_cython_type(other), p.name)),
+                TypeRef::Named(s) if struct_modes.get(s) == Some(&StructEmitMode::Opaque) => {
+                    params.push(format!("C{}_t {}", s, param_name))
+                }
+                TypeRef::Named(s) => params.push(format!("C{} {}", s, param_name)),
+                other => params.push(format!("{} {}", to_cython_type(other), param_name)),
             }
         }
 
@@ -144,14 +310,27 @@ pub fn generate_pxd(module: &crate::ir::Module, lib_name: &str) -> String {
         }
 
         out.push_str(&format!(
-            "    {} c_{} \"{}\"({})\n",
+            "    {} c_{} \"{}\"({})",
             ret, fn_def.name, fn_def.name, params
         ));
+        if !renamed_params.is_empty() {
+            out.push_str(&format!(
+                " # renamed from `{}` (Cython keyword)",
+                renamed_params.join("`, `")
+            ));
+        }
+        out.push('\n');
         out.push('\n');
     }
 
+    let mut seen_enums = std::collections::HashSet::new();
     for e in &module.enums {
-        out.push_str(&format!("cpdef enum {}:\n", e.name));
+        if !seen_enums.insert(e.name.clone()) {
+            continue;
+        }
+        // Rust enums are not ABI-stable by default. Keeping a declaration here also
+        // makes `cython file.pxd` self-import the enum and report duplicate symbols.
+        out.push_str(&format!("ctypedef enum {}:\n", e.name));
         for v in &e.variants {
             out.push_str(&format!("    {}\n", v.name));
         }

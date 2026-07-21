@@ -1,0 +1,80 @@
+name: 'rust2cython'
+description: 'Generate Cython .pxd/.pyx bindings from Rust source'
+author: 'onepizzateam'
+branding:
+  icon: 'zap'
+  color: 'orange'
+inputs:
+  input:
+    description: 'Path to Rust source file or Cargo.toml (for --crate mode)'
+    required: true
+  output:
+    description: 'Output directory for generated files'
+    required: false
+    default: 'bindings'
+  name:
+    description: 'Library name for generated files'
+    required: false
+    default: ''
+  typed:
+    description: 'Emit Python type annotations in generated .pyx'
+    required: false
+    default: 'false'
+  no_shim:
+    description: 'Skip generating the Rust FFI shim'
+    required: false
+    default: 'false'
+  rust2cython_version:
+    description: 'Version of rust2cython to install (default: latest)'
+    required: false
+    default: 'latest'
+outputs:
+  pxd_path:
+    description: 'Path to generated .pxd file'
+  pyx_path:
+    description: 'Path to generated .pyx file'
+  header_path:
+    description: 'Path to generated .h file'
+runs:
+  using: 'composite'
+  steps:
+    - name: Install rust2cython
+      shell: bash
+      run: |
+        if [ "${{ inputs.rust2cython_version }}" = "latest" ]; then
+          cargo install rust2cython
+        else
+          cargo install rust2cython --version "${{ inputs.rust2cython_version }}"
+        fi
+    - name: Detect crate mode
+      id: detect
+      shell: bash
+      run: |
+        if [[ "${{ inputs.input }}" == *.toml ]]; then
+          echo "mode=crate" >> "$GITHUB_OUTPUT"
+        else
+          echo "mode=file" >> "$GITHUB_OUTPUT"
+        fi
+    - name: Generate bindings (file mode)
+      if: steps.detect.outputs.mode == 'file'
+      shell: bash
+      run: |
+        NAME_FLAG=""; [ -n "${{ inputs.name }}" ] && NAME_FLAG="-n ${{ inputs.name }}"
+        TYPED_FLAG=""; [ "${{ inputs.typed }}" = "true" ] && TYPED_FLAG="--typed"
+        NO_SHIM_FLAG=""; [ "${{ inputs.no_shim }}" = "true" ] && NO_SHIM_FLAG="--no-shim"
+        rust2cython "${{ inputs.input }}" -o "${{ inputs.output }}" $NAME_FLAG $TYPED_FLAG $NO_SHIM_FLAG
+    - name: Generate bindings (crate mode)
+      if: steps.detect.outputs.mode == 'crate'
+      shell: bash
+      run: |
+        NAME_FLAG=""; [ -n "${{ inputs.name }}" ] && NAME_FLAG="-n ${{ inputs.name }}"
+        TYPED_FLAG=""; [ "${{ inputs.typed }}" = "true" ] && TYPED_FLAG="--typed"
+        rust2cython --crate "${{ inputs.input }}" -o "${{ inputs.output }}" $NAME_FLAG $TYPED_FLAG
+    - name: Set outputs
+      shell: bash
+      run: |
+        LIB_NAME="${{ inputs.name }}"
+        if [ -z "$LIB_NAME" ]; then LIB_NAME=$(basename "${{ inputs.input }}" .rs); fi
+        echo "pxd_path=${{ inputs.output }}/${LIB_NAME}.pxd" >> "$GITHUB_OUTPUT"
+        echo "pyx_path=${{ inputs.output }}/${LIB_NAME}.pyx" >> "$GITHUB_OUTPUT"
+        echo "header_path=${{ inputs.output }}/${LIB_NAME}.h" >> "$GITHUB_OUTPUT"

@@ -69,13 +69,14 @@ pub fn plan_shim(fn_def: &FnDef) -> ShimFn {
             name: p.name.clone(),
             original_ty: p.ty.clone(),
             ffi_ty: map_param_ty(&p.ty),
+            is_slice: p.is_slice,
         })
         .collect();
 
     let ffi_ret = map_return_ty(&fn_def.ret);
 
     ShimFn {
-        original_name: fn_def.name.clone(),
+        original_name: fn_def.original_name.clone(),
         shim_name: fn_def.name.clone(),
         params,
         ret: fn_def.ret.clone(),
