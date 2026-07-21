@@ -1,128 +1,65 @@
 # rust2cython — Generate Cython bindings from Rust
 
-rust2cython generates complete Cython `.pxd` / `.pyx` bindings, a C header, and a small Rust FFI shim from idiomatic Rust source.
+rust2cython generates Cython `.pxd` / `.pyx` bindings, a C header, and a small Rust FFI shim from idiomatic Rust source.
 
-This repository contains the generator (a Rust CLI) and several real-world examples demonstrating the generated output.
-
-Quick start
+## Quick start
 
 ```bash
-rust2cython src/lib.rs -o bindings/ -n mylib
-cd bindings
-sh BUILD.sh
+rust2cython src/lib.rs -o bindings -n mylib
+python build.py --name mylib --bindings bindings
 ```
 
-**Try it online:** [playground.rust2cython.dev](https://playground.rust2cython.dev) — paste Rust, see generated Cython instantly.
+Generated output includes `.pxd`, `.pyx`, a matching C header, an optional Rust shim, and setuptools metadata.
 
-What you get
+## Benchmark table
 
-- `mylib.pxd` — Cython declarations (extern block)
-- `mylib.pyx` — Cython wrapper with Python-friendly functions/classes
-- `mylib.h` — C header matching exported symbols
-- `src/mylib_ffi.rs` — Rust shim (optional injection into your crate)
-- `setup.py` / `pyproject.toml` / `BUILD.sh` — build helpers
+| Implementation | Mean (ms) | Std (ms) | vs Pure Python |
+|----------------|-----------|----------|----------------|
+| Pure Python    | 122.030   | 69.525   | 1.0×           |
+| NumPy          | 3.236     | 1.400    | 37.7×          |
+| cffi (manual)  | 1.014     | 0.104    | 120.3×         |
+| rust2cython    | 5.123     | 1.973    | 23.8×          |
+| PyO3           | N/A       | N/A      | N/A (PyO3 0.21 does not support Python 3.13) |
 
-Why this tool
+Benchmarked on: Windows 11 Home Single Language, 11th Gen Intel(R) Core(TM) i3-1115G4 @ 3.00GHz, Python 3.13.5, rustc 1.89.0, N=100_000.
 
-If you maintain or extend a codebase that uses hand-written Cython wrappers, `rust2cython` lets you implement performance-critical code in Rust and generate the Cython integration automatically — preserving existing `.pxd`/`.pyx` workflows and compatibility with hand-written code.
+## Type support
 
-Features added for v1.0.0
+See [TYPES.md](TYPES.md) for the full supported/stub/unsupported matrix. Unsupported types emit a `[WARN]` at generation time with a suggested workaround.
 
-- Expanded type coverage: `isize`, `Result<String, _>`, improved `Vec<T>` handling
-- Shallow crate mode (`--crate`) to merge top-level modules
-- `--typed` mode to emit Python annotations in generated `.pyx`
-- `--dry-run` to preview outputs without writing files
-- Clearer unsupported-type warnings and recovery suggestions
-- `impl` block support: associated functions (static methods without `self`) are automatically discovered and wrapped
-- `&[T]` slice parameters: mapped to `(const T*, size_t len)` — same as `Vec<T>`
+## Building
 
-## Performance
-
-Benchmark: z-score of 1,000,000 `f64` values, 100 iterations, median time. Run on WSL2 / Ubuntu (x86_64).
-
-| Approach | Median | Speedup vs Pure Python | Effort |
-|---|---|---|---|
-| Pure Python | 231.17 ms | 1x | — |
-| NumPy | 7.29 ms | 31.7x | — |
-| cffi (manual) | 16.31 ms | 14.2x | write header + bindings by hand |
-| rust2cython (generated) | 16.36 ms | 14.1x | **one command** |
-| PyO3 | 5.20 ms | 44.5x | Python-specific attribute macros |
-
-rust2cython matches hand-written cffi performance exactly — the same underlying `.so`, the same FFI boundary, zero manual work. PyO3 is faster and eliminates the array copy, but requires annotating your Rust source with Python-specific macros (`#[pyfunction]`, `#[pymodule]`) and gives up compatibility with hand-written Cython code. If you're starting a new project and don't need Cython, use PyO3.
-
-rust2cython is for codebases that already use Cython: you can call Rust from existing `.pyx` files without touching either codebase.
-
-To reproduce:
-```bash
-cd bench/rust_zscore && cargo build --release
-rust2cython bench/rust_zscore/src/lib.rs -o bench/rust_zscore_out/ -n rust_zscore
-cd bench/rust_zscore_out && sh BUILD.sh
-python3 bench/zscore_bench.py
-```
-
-## tested against real codebases
-
-Run `bash examples/validate/run_all.sh` to reproduce. Results filled in after validation runs.
-
-| Repo | Stars | Functions found | Generated | Skipped | Primary skip reason |
-|------|-------|-----------------|-----------|---------|---------------------|
-| rust-bio (gc) | ~4k | 2 | yes | 0 | none |
-| rust-bio (align) | ~4k | 0 | yes | 0 | no pub fn found |
-| triple_accel | ~400 | 2 | yes | 0 | none |
-| statrs | ~1k | 0 | yes | 0 | no pub fn found |
-| linfa-linear | ~3k | 0 | no | 0 | reading file /tmp/linfa/linfa-linear/src/lib.rs |
-
-*See [examples/validate/RESULTS.md](examples/validate/RESULTS.md) for full per-repo findings.*
-
-Getting started
-
-Install the CLI:
+### Linux / macOS / Windows
 
 ```bash
-cargo install --path .
+python build.py
 ```
 
-Generate bindings:
+On Windows, ensure Rust and Python are in PATH. WSL2 also works.
+
+## Validation table
+
+| Crate        | Pub fns before | Pub fns after | .pyx compiles | .pyx imports |
+|--------------|---------------:|--------------:|---------------|--------------|
+| linfa-linear | 0 | 0 | yes | N/A — no public free functions generated, so no extension target |
+| statrs       | 0 | 0 | yes | N/A — no public free functions generated, so no extension target |
+
+## Getting started
+
+Install the CLI with `cargo install --path .`, then generate bindings with:
 
 ```bash
 rust2cython --typed src/lib.rs -o bindings -n mylib
 ```
 
-Preview without writing:
+Use `rust2cython --dry-run src/lib.rs -n mylib` to preview files, or `rust2cython --crate Cargo.toml -o bindings -n mylib` for shallow crate traversal.
 
-```bash
-rust2cython --dry-run src/lib.rs -n mylib
-```
+## CI
 
-Shallow crate mode:
+The repository includes GitHub Actions workflows. The main branch status is shown below.
 
-```bash
-rust2cython --crate Cargo.toml -o bindings -n mylib
-```
+[![CI](https://github.com/onepizzateam/rust2cython/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/onepizzateam/rust2cython/actions/workflows/ci.yml)
 
-## Use in CI (GitHub Action)
-
-Add to your workflow to auto-generate bindings on every push:
-
-```yaml
-- uses: onepizzateam/rust2cython@v1
-  with:
-    input: src/lib.rs
-    output: bindings/
-    name: mylib
-```
-
-See [.github/action.yml](.github/action.yml) for all inputs.
-
-Contributing
-
-Run tests (snapshots may need to be accepted on first run):
-
-```bash
-INSTA_UPDATE=new cargo test
-cargo clippy -- -D warnings
-```
-
-License
+## License
 
 MIT

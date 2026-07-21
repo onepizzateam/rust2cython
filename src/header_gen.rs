@@ -87,7 +87,11 @@ pub fn generate_header(module: &crate::ir::Module, _lib_name: &str) -> String {
                         Err("Result<non-primitive,_> not supported".to_string())
                     }
                 }
-                TypeRef::Ptr(_) => Err("pointer types not supported".to_string()),
+                TypeRef::Ptr(inner, mutable) => {
+                    let base = map_type(inner, prim_to_c)?;
+                    Ok(format!("{}{}*", if *mutable { "" } else { "const " }, base))
+                }
+                TypeRef::Tuple => Err("tuple return has no stable C ABI".to_string()),
             }
         }
 

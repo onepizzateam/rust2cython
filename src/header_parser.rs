@@ -45,7 +45,7 @@ pub fn parse_c_header(path: &std::path::Path) -> anyhow::Result<crate::ir::Modul
             return TypeRef::Void;
         }
         if compact == "void*" || compact == "void *" {
-            return TypeRef::Ptr(Box::new(TypeRef::Void));
+            return TypeRef::Ptr(Box::new(TypeRef::Void), false);
         }
         if compact == "const char*"
             || compact == "const char *"

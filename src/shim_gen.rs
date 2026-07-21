@@ -19,6 +19,11 @@ fn prim_to_rust(t: &TypeRef) -> String {
             crate::ir::PrimKind::Usize => "usize".into(),
         },
         TypeRef::Named(n) => n.clone(),
+        TypeRef::Ptr(inner, mutable) => format!(
+            "*{} {}",
+            if *mutable { "mut" } else { "const" },
+            prim_to_rust(inner)
+        ),
         TypeRef::Void => "()".into(),
         other => format!("/*unsupported rust type: {:?}*/", other),
     }

@@ -23,7 +23,10 @@ pub enum TypeRef {
     Option(Box<TypeRef>),
     Result(Box<TypeRef>, Box<TypeRef>),
     Named(String),
-    Ptr(Box<TypeRef>),
+    /// Raw pointer; the boolean is true for `*mut T` and false for `*const T`.
+    Ptr(Box<TypeRef>, bool),
+    /// A non-unit Rust tuple has no stable C ABI and is emitted as a wrapper stub.
+    Tuple,
     Void,
 }
 

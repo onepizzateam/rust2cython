@@ -94,7 +94,7 @@ pub(crate) fn field_is_concrete(
     match ty {
         TypeRef::Primitive(_) => true,
         TypeRef::Named(name) => struct_names.contains(name),
-        TypeRef::Ptr(inner) => field_is_concrete(inner, struct_names),
+        TypeRef::Ptr(inner, _) => field_is_concrete(inner, struct_names),
         _ => false,
     }
 }
@@ -129,7 +129,7 @@ fn has_unknown_named(
                 Some(s.clone())
             }
         }
-        TypeRef::Vec(inner) | TypeRef::Option(inner) | TypeRef::Ptr(inner) => {
+        TypeRef::Vec(inner) | TypeRef::Option(inner) | TypeRef::Ptr(inner, _) => {
             has_unknown_named(inner, struct_names)
         }
         TypeRef::Result(ok, err) => {
@@ -207,6 +207,14 @@ pub fn generate_pxd(module: &crate::ir::Module, lib_name: &str) -> String {
 
     // Functions
     for fn_def in &module.functions {
+        if matches!(fn_def.ret, TypeRef::Tuple) {
+            eprintln!("[WARN] fn `{}` â€” tuple return has no stable C ABI. Use a #[repr(C)] newtype struct. Emitting NotImplementedError stub in .pyx.", fn_def.name);
+            out.push_str(&format!(
+                "    # WARNING: skipped {}, tuple return has no stable C ABI\n\n",
+                fn_def.name
+            ));
+            continue;
+        }
         // check for unknown named types used
         if let Some(name) = has_unknown_named(&fn_def.ret, &struct_names) {
             out.push_str(&format!(
@@ -249,6 +257,13 @@ pub fn generate_pxd(module: &crate::ir::Module, lib_name: &str) -> String {
             TypeRef::Named(s) if struct_modes.get(s) == Some(&StructEmitMode::Opaque) => {
                 format!("C{}_t", s)
             }
+            TypeRef::Ptr(inner, _) if matches!(&**inner, TypeRef::Named(s) if struct_modes.get(s) == Some(&StructEmitMode::Opaque)) => {
+                if let TypeRef::Named(s) = &**inner {
+                    format!("C{}_t", s)
+                } else {
+                    unreachable!()
+                }
+            }
             TypeRef::Named(s) => format!("C{}", s),
             TypeRef::Void => "void".to_string(),
             other => to_cython_type(other),
@@ -286,6 +301,11 @@ pub fn generate_pxd(module: &crate::ir::Module, lib_name: &str) -> String {
                 }
                 TypeRef::Named(s) if struct_modes.get(s) == Some(&StructEmitMode::Opaque) => {
                     params.push(format!("C{}_t {}", s, param_name))
+                }
+                TypeRef::Ptr(inner, _) if matches!(&**inner, TypeRef::Named(s) if struct_modes.get(s) == Some(&StructEmitMode::Opaque)) => {
+                    if let TypeRef::Named(s) = &**inner {
+                        params.push(format!("C{}_t {}", s, param_name))
+                    }
                 }
                 TypeRef::Named(s) => params.push(format!("C{} {}", s, param_name)),
                 other => params.push(format!("{} {}", to_cython_type(other), param_name)),

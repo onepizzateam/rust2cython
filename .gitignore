@@ -1,2 +1,7 @@
 tests/snapshots/tmp/
 target/
+__pycache__/
+tests/smoke/out/
+bench/rust_zscore/bindings/
+examples/validate/linfa-linear/
+examples/validate/**/*.cpp

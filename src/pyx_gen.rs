@@ -35,10 +35,24 @@ pub fn generate_pyx(module: &crate::ir::Module, name: &str) -> String {
     out.push_str("    void rust2cython_free_string(char* ptr)\n");
     out.push_str("    void rust2cython_free_string_array(char** ptr, size_t len)\n\n");
 
-    // structs
+    // structs.  A Rust struct containing Rust-owned fields (for example String)
+    // is opaque at the FFI boundary; declaring its layout in Cython is invalid.
     let struct_names: std::collections::HashSet<String> =
         module.structs.iter().map(|s| s.name.clone()).collect();
+    let struct_modes: std::collections::HashMap<String, crate::pxd_gen::StructEmitMode> = module
+        .structs
+        .iter()
+        .map(|s| {
+            (
+                s.name.clone(),
+                crate::pxd_gen::resolve_struct_emit_mode(s, &struct_names),
+            )
+        })
+        .collect();
     for s in &module.structs {
+        if struct_modes[&s.name] == crate::pxd_gen::StructEmitMode::Opaque {
+            continue;
+        }
         out.push_str(&format!(
             "    ctypedef struct C{} \"{}\":\n",
             s.name, s.name
@@ -76,6 +90,9 @@ pub fn generate_pyx(module: &crate::ir::Module, name: &str) -> String {
 
     // functions (aliased)
     for fn_def in &module.functions {
+        if matches!(fn_def.ret, TypeRef::Tuple) {
+            continue;
+        }
         // prepare params in pxd style
         let mut params = Vec::new();
         let mut unknown_named = None;
@@ -105,6 +122,16 @@ pub fn generate_pyx(module: &crate::ir::Module, name: &str) -> String {
                         unknown_named = Some(p.name.clone());
                     }
                 },
+                TypeRef::Named(sn)
+                    if struct_modes.get(sn) == Some(&crate::pxd_gen::StructEmitMode::Opaque) =>
+                {
+                    params.push(format!("void* {}", p.name))
+                }
+                TypeRef::Ptr(inner, _) if matches!(&**inner, TypeRef::Named(s) if struct_modes.get(s) == Some(&crate::pxd_gen::StructEmitMode::Opaque)) => {
+                    if let TypeRef::Named(_s) = &**inner {
+                        params.push(format!("void* {}", p.name))
+                    }
+                }
                 TypeRef::Named(sn) => params.push(format!("C{} {}", sn, p.name)),
                 other => params.push(format!("{} {}", to_cython_type(other), p.name)),
             }
@@ -144,6 +171,18 @@ pub fn generate_pyx(module: &crate::ir::Module, name: &str) -> String {
                 extra.push("char** error_out".to_string());
                 to_cython_type(ok)
             }
+            TypeRef::Named(name)
+                if struct_modes.get(name) == Some(&crate::pxd_gen::StructEmitMode::Opaque) =>
+            {
+                "void*".to_string()
+            }
+            TypeRef::Ptr(inner, _) if matches!(&**inner, TypeRef::Named(s) if struct_modes.get(s) == Some(&crate::pxd_gen::StructEmitMode::Opaque)) => {
+                if let TypeRef::Named(_s) = &**inner {
+                    "void*".to_string()
+                } else {
+                    unreachable!()
+                }
+            }
             TypeRef::Named(name) => format!("C{}", name),
             other => to_cython_type(other),
         };
@@ -163,6 +202,11 @@ pub fn generate_pyx(module: &crate::ir::Module, name: &str) -> String {
     // cdef classes for structs
     for s in &module.structs {
         out.push_str(&format!("cdef class {}:\n", s.name));
+        if struct_modes[&s.name] == crate::pxd_gen::StructEmitMode::Opaque {
+            out.push_str("    cdef void* _ptr\n");
+            out.push_str("    def __dealloc__(self):\n        pass\n\n");
+            continue;
+        }
         out.push_str(&format!("    cdef C{} _c\n", s.name));
         // constructor
         let ctor_params = s
@@ -219,7 +263,11 @@ pub fn generate_pyx(module: &crate::ir::Module, name: &str) -> String {
             .map(|p| {
                 let (param_name, _) = crate::pxd_gen::cython_ident(&p.name);
                 match &p.ty {
-                    TypeRef::Named(sn) => format!("{}: {}", param_name, sn),
+                TypeRef::Named(sn) => format!("{}: {}", param_name, sn),
+                TypeRef::Ptr(inner, _) if matches!(&**inner, TypeRef::Named(s) if struct_modes.get(s) == Some(&crate::pxd_gen::StructEmitMode::Opaque)) => {
+                    if let TypeRef::Named(s) = &**inner { format!("{}: {}", param_name, s) } else { unreachable!() }
+                }
+                TypeRef::Ptr(inner, _) if numpy_dtype_for(inner).is_some() => format!("{}[::1] {}", to_cython_type(inner), param_name),
                     _ => param_name,
                 }
             })
@@ -257,6 +305,13 @@ pub fn generate_pyx(module: &crate::ir::Module, name: &str) -> String {
                 TypeRef::Named(sn) => {
                     pre.push(format!("    cdef C{} _{}_c = {}._c", sn, p.name, p.name));
                     call_args.push(format!("_{}_c", p.name));
+                }
+                TypeRef::Ptr(inner, _) if matches!(&**inner, TypeRef::Named(s) if struct_modes.get(s) == Some(&crate::pxd_gen::StructEmitMode::Opaque)) =>
+                {
+                    call_args.push(format!("{}._ptr", p.name));
+                }
+                TypeRef::Ptr(inner, _) if numpy_dtype_for(inner).is_some() => {
+                    call_args.push(format!("&{}[0]", p.name));
                 }
                 TypeRef::Str => {
                     // if it is Option<String>, it can be None
@@ -418,6 +473,27 @@ pub fn generate_pyx(module: &crate::ir::Module, name: &str) -> String {
                     s
                 ));
             }
+            TypeRef::Ptr(inner, _) => {
+                if let TypeRef::Named(s) = &**inner {
+                    if struct_modes.get(s) == Some(&crate::pxd_gen::StructEmitMode::Opaque) {
+                        out.push_str(&format!(
+                            "    cdef void* _result = c_{1}({2})\n    cdef {0} out\n",
+                            s,
+                            fn_def.name,
+                            call_args.join(", ")
+                        ));
+                        out.push_str("    if _result is NULL:\n        return None\n");
+                        out.push_str(&format!("    out = {0}.__new__({0})\n    out._ptr = _result\n    return out\n\n", s));
+                    } else {
+                        out.push_str("    raise NotImplementedError(\"raw pointer return requires an opaque struct\")\n\n");
+                    }
+                } else {
+                    out.push_str("    raise NotImplementedError(\"raw pointer return requires an opaque struct\")\n\n");
+                }
+            }
+            TypeRef::Tuple => {
+                out.push_str("    raise NotImplementedError(\"tuple return has no stable C ABI; use a #[repr(C)] newtype struct\")\n\n");
+            }
             TypeRef::Option(inner) => match &**inner {
                 TypeRef::Named(s) => {
                     out.push_str(&format!(
@@ -488,16 +564,6 @@ pub fn generate_pyx(module: &crate::ir::Module, name: &str) -> String {
                 ));
                 out.push_str(&cleanup);
                 out.push_str("    return\n\n");
-            }
-            _ => {
-                let rust_type = format!("{:?}", fn_def.ret);
-                eprintln!("[WARN] fn `{}` — return type `{}` has no FFI mapping. Emitting NotImplementedError stub in .pyx.", fn_def.name, rust_type);
-                out.push_str(&cleanup);
-                out.push_str(&format!(
-                    "    # return type `{}` has no Cython mapping — not implemented\n",
-                    rust_type
-                ));
-                out.push_str(&format!("    raise NotImplementedError(\"{}: return type `{}` has no Cython FFI mapping\")\n\n", fn_def.name, rust_type));
             }
         }
     }

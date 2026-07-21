@@ -95,8 +95,9 @@ pub fn parse_rust_file(path: &std::path::Path) -> anyhow::Result<crate::ir::Modu
                 }
                 convert(&r.elem)
             }
-            syn::Type::Ptr(p) => TypeRef::Ptr(Box::new(convert(&p.elem))),
+            syn::Type::Ptr(p) => TypeRef::Ptr(Box::new(convert(&p.elem)), p.mutability.is_some()),
             syn::Type::Tuple(t) if t.elems.is_empty() => TypeRef::Void,
+            syn::Type::Tuple(_) => TypeRef::Tuple,
             _ => TypeRef::Named("unknown".to_string()),
         }
     }
@@ -120,7 +121,13 @@ pub fn parse_rust_file(path: &std::path::Path) -> anyhow::Result<crate::ir::Modu
                                 syn::Pat::Ident(pi) => pi.ident.to_string(),
                                 _ => "_".to_string(),
                             };
-                            let pty = convert(&pt.ty);
+                            let pty = if matches!(&*pt.ty, syn::Type::Tuple(t) if !t.elems.is_empty()) {
+                                // Tuple parameters remain on the established unsupported path;
+                                // only tuple *returns* receive the explicit stub diagnostic.
+                                crate::ir::TypeRef::Named("unknown".to_string())
+                            } else {
+                                convert(&pt.ty)
+                            };
                             params.push(crate::ir::Param {
                                 name: pname,
                                 ty: pty,
@@ -185,7 +192,11 @@ pub fn parse_rust_file(path: &std::path::Path) -> anyhow::Result<crate::ir::Modu
                         };
                         params.push(crate::ir::Param {
                             name: pname,
-                            ty: convert(&pt.ty),
+                            ty: if matches!(&*pt.ty, syn::Type::Tuple(t) if !t.elems.is_empty()) {
+                                crate::ir::TypeRef::Named("unknown".to_string())
+                            } else {
+                                convert(&pt.ty)
+                            },
                             is_slice: matches!(&*pt.ty, syn::Type::Reference(r) if matches!(&*r.elem, syn::Type::Slice(_))),
                         });
                     }

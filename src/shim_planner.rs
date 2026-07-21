@@ -5,6 +5,7 @@ pub fn plan_shim(fn_def: &FnDef) -> ShimFn {
     fn map_param_ty(ty: &TypeRef) -> FfiType {
         match ty {
             TypeRef::Primitive(_) => FfiType::Direct(ty.clone()),
+            TypeRef::Ptr(_, _) => FfiType::Direct(ty.clone()),
             TypeRef::Str => FfiType::CStr,
             TypeRef::Vec(inner) => {
                 let inner_ty = *inner.clone();
@@ -32,6 +33,7 @@ pub fn plan_shim(fn_def: &FnDef) -> ShimFn {
     fn map_return_ty(ty: &TypeRef) -> FfiType {
         match ty {
             TypeRef::Primitive(_) => FfiType::Direct(ty.clone()),
+            TypeRef::Ptr(_, _) => FfiType::Direct(ty.clone()),
             TypeRef::Void => FfiType::Direct(ty.clone()),
             TypeRef::Str => FfiType::CStr,
             TypeRef::Vec(inner) => {

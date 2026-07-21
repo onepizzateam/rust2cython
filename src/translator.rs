@@ -43,7 +43,11 @@ pub fn to_cython_type(ty: &crate::ir::TypeRef) -> String {
         TypeRef::Option(inner) => to_cython_type(inner),
         TypeRef::Result(ok, _err) => to_cython_type(ok),
         TypeRef::Named(s) => s.clone(),
-        TypeRef::Ptr(_) => "void*".to_string(),
+        TypeRef::Ptr(inner, mutable) => {
+            let prefix = if *mutable { "" } else { "const " };
+            format!("{}{}*", prefix, to_cython_type(inner))
+        }
+        TypeRef::Tuple => "object".to_string(),
         TypeRef::Void => "void".to_string(),
     }
 }
