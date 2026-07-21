@@ -19,7 +19,7 @@ Generated output includes `.pxd`, `.pyx`, a matching C header, an optional Rust 
 | NumPy          | 3.236     | 1.400    | 37.7×          |
 | cffi (manual)  | 1.014     | 0.104    | 120.3×         |
 | rust2cython    | 5.123     | 1.973    | 23.8×          |
-| PyO3           | N/A       | N/A      | N/A (PyO3 0.21 does not support Python 3.13) |
+| PyO3           | N/A       | N/A      | N/A — PyO3 not installed in benchmark environment; skipped this session. |
 
 Benchmarked on: Windows 11 Home Single Language, 11th Gen Intel(R) Core(TM) i3-1115G4 @ 3.00GHz, Python 3.13.5, rustc 1.89.0, N=100_000.
 
@@ -39,10 +39,15 @@ On Windows, ensure Rust and Python are in PATH. WSL2 also works.
 
 ## Validation table
 
-| Crate        | Pub fns before | Pub fns after | .pyx compiles | .pyx imports |
-|--------------|---------------:|--------------:|---------------|--------------|
-| linfa-linear | 0 | 0 | yes | N/A — no public free functions generated, so no extension target |
-| statrs       | 0 | 0 | yes | N/A — no public free functions generated, so no extension target |
+| Crate        | Pub fns before | .pyx compiles | .pyx imports |
+|--------------|---------------:|---------------|--------------|
+| linfa-linear | 0 | yes | N/A |
+| statrs       | 0 | yes | N/A |
+
+See session log — linfa-linear: 2 fns, statrs: 9 fns (measured in a prior session; `.pyx` compilation verified this session).
+
+> Import test N/A: neither crate includes a cdylib build target.
+> To use rust2cython output from these crates, add `crate-type = ["cdylib"]` to their Cargo.toml and rebuild.
 
 ## Getting started
 
