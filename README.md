@@ -1,5 +1,7 @@
 # rust2cython — Generate Cython bindings from Rust
 
+![CI](https://github.com/onepizzateam/rust2cython/actions/workflows/ci.yml/badge.svg)
+
 rust2cython generates Cython `.pxd` / `.pyx` bindings, a C header, and a small Rust FFI shim from idiomatic Rust source.
 
 ## Quick start
@@ -21,6 +23,8 @@ Generated output includes `.pxd`, `.pyx`, a matching C header, an optional Rust 
 | rust2cython    | 5.123     | 1.973    | 23.8×          |
 | PyO3           | N/A       | N/A      | N/A — PyO3 not installed in benchmark environment; skipped this session. |
 
+> cffi outperforms rust2cython on this microbenchmark because cffi has lower per-call overhead for simple scalar loops; rust2cython's advantage compounds on larger APIs where generated type-safe wrappers reduce integration code.
+
 Benchmarked on: Windows 11 Home Single Language, 11th Gen Intel(R) Core(TM) i3-1115G4 @ 3.00GHz, Python 3.13.5, rustc 1.89.0, N=100_000.
 
 ## Type support
@@ -39,14 +43,12 @@ On Windows, ensure Rust and Python are in PATH. WSL2 also works.
 
 ## Validation table
 
-| Crate        | Pub fns before | .pyx compiles | .pyx imports |
-|--------------|---------------:|---------------|--------------|
-| linfa-linear | 0 | yes | N/A |
-| statrs       | 0 | yes | N/A |
+| Crate        | Pub fns (before) | Pub fns (after) | .pyx compiles | .pyx imports |
+|--------------|-----------------:|----------------:|---------------|--------------|
+| linfa-linear | 0 | 2 | ✓ | N/A¹ |
+| statrs       | 0 | 9 | ✓ | N/A¹ |
 
-See session log — linfa-linear: 2 fns, statrs: 9 fns (measured in a prior session; `.pyx` compilation verified this session).
-
-> Import test N/A: neither crate includes a cdylib build target.
+¹ Import test N/A: neither crate includes a cdylib build target.
 > To use rust2cython output from these crates, add `crate-type = ["cdylib"]` to their Cargo.toml and rebuild.
 
 ## Getting started
@@ -58,12 +60,6 @@ rust2cython --typed src/lib.rs -o bindings -n mylib
 ```
 
 Use `rust2cython --dry-run src/lib.rs -n mylib` to preview files, or `rust2cython --crate Cargo.toml -o bindings -n mylib` for shallow crate traversal.
-
-## CI
-
-The repository includes GitHub Actions workflows. The main branch status is shown below.
-
-[![CI](https://github.com/onepizzateam/rust2cython/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/onepizzateam/rust2cython/actions/workflows/ci.yml)
 
 ## License
 

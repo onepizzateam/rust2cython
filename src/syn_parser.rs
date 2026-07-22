@@ -121,7 +121,8 @@ pub fn parse_rust_file(path: &std::path::Path) -> anyhow::Result<crate::ir::Modu
                                 syn::Pat::Ident(pi) => pi.ident.to_string(),
                                 _ => "_".to_string(),
                             };
-                            let pty = if matches!(&*pt.ty, syn::Type::Tuple(t) if !t.elems.is_empty()) {
+                            let pty = if matches!(&*pt.ty, syn::Type::Tuple(t) if !t.elems.is_empty())
+                            {
                                 // Tuple parameters remain on the established unsupported path;
                                 // only tuple *returns* receive the explicit stub diagnostic.
                                 crate::ir::TypeRef::Named("unknown".to_string())
